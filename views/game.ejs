@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игра Zonk</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🎲 ZONK Game 🎲</h1>
+        
+        <div class="score-board">
+            <div class="total-score">Общий счет: <%= game.totalScore %></div>
+            <div class="round-score">Очки за раунд: <%= game.calculateScore() %></div>
+            <div class="rolls-left">Бросков осталось: <%= game.rollsLeft %></div>
+        </div>
+
+        <div class="dice-container">
+            <% game.dice.forEach((die, index) => { %>
+                <div class="dice <%= game.selected[index] ? 'selected' : '' %>" 
+                     onclick="toggleDice(<%= index %>)">
+                    <%= die === 0 ? '?' : die %>
+                </div>
+            <% }); %>
+        </div>
+
+        <div class="controls">
+            <form action="/roll" method="POST">
+                <button type="submit" <%= game.rollsLeft === 0 ? 'disabled' : '' %>>
+                    Бросить кости (<%= game.rollsLeft %>)
+                </button>
+            </form>
+
+            <form action="/take" method="POST">
+                <button type="submit" <%= game.calculateScore() === 0 ? 'disabled' : '' %>>
+                    Забрать очки
+                </button>
+            </form>
+
+            <form action="/reset" method="POST">
+                <button type="submit">Новая игра</button>
+            </form>
+        </div>
+
+        <% if (game.isZonk() && game.rollsLeft < 3) { %>
+            <div class="zonk-message">ZONK! Нет очков в этом раунде!</div>
+        <% } %>
+    </div>
+
+    <script>
+        function toggleDice(index) {
+            fetch('/toggle/' + index, { method: 'POST' })
+                .then(() => window.location.reload());
+        }
+    </script>
+</body>
+</html>
