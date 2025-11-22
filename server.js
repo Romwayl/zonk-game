@@ -17,59 +17,16 @@ app.use(session({
   saveUninitialized: true
 }));
 
-// Логика игры
-class ZonkGame {
-  constructor() {
-    this.dice = [1, 1, 1, 1, 1, 1]; // Начинаем с всех костей = 1
-    this.selected = [false, false, false, false, false, false];
-    this.totalScore = 0;
-    this.roundScore = 0;
-    this.rollsLeft = 3;
-    this.gameOver = false;
-  }
-
-  rollDice() {
-    if (this.rollsLeft > 0 && !this.gameOver) {
-      // Сбрасываем выбор если это первый бросок
-      if (this.rollsLeft === 3) {
-        this.selected = [false, false, false, false, false, false];
-      }
-      
-      for (let i = 0; i < 6; i++) {
-        if (!this.selected[i]) {
-          this.dice[i] = Math.floor(Math.random() * 6) + 1;
-        }
-      }
-      this.rollsLeft--;
-      
-      // Проверяем ZONK
-      if (this.calculateScore() === 0) {
-        this.roundScore = 0;
-        this.rollsLeft = 0;
-      } else {
-        this.roundScore = this.calculateScore();
-      }
-      return true;
-    }
-    return false;
-  }
-
-  toggleDice(index) {
-    if (this.rollsLeft < 3 && !this.gameOver) {
-      this.selected[index] = !this.selected[index];
-      this.roundScore = this.calculateScore();
-    }
-  }
-
-  calculateScore() {
+// Вспомогательные функции для игры
+const gameLogic = {
+  calculateScore(dice, selected) {
     let score = 0;
     const counts = [0, 0, 0, 0, 0, 0, 0];
-    const tempDice = [...this.dice];
     
     // Считаем только выбранные кости
     for (let i = 0; i < 6; i++) {
-      if (this.selected[i]) {
-        counts[this.dice[i]]++;
+      if (selected[i]) {
+        counts[dice[i]]++;
       }
     }
 
@@ -81,41 +38,28 @@ class ZonkGame {
     for (let i = 1; i <= 6; i++) {
       if (counts[i] >= 3) {
         score += i === 1 ? 1000 : i * 100;
-        // Убираем использованные кости из подсчета для дополнительных очков
         counts[i] -= 3;
       }
     }
 
     return score;
-  }
+  },
 
-  takePoints() {
-    if (!this.gameOver) {
-      this.totalScore += this.roundScore;
-      this.roundScore = 0;
-      this.rollsLeft = 3;
-      this.selected = [false, false, false, false, false, false];
-      
-      // Автоматически бросаем новые кости
-      for (let i = 0; i < 6; i++) {
-        this.dice[i] = Math.floor(Math.random() * 6) + 1;
-      }
-      
-      // Проверяем победу
-      if (this.totalScore >= 1000) {
-        this.gameOver = true;
-      }
-    }
+  isZonk(dice, selected) {
+    return this.calculateScore(dice, selected) === 0;
   }
+};
 
-  resetGame() {
-    this.dice = [1, 1, 1, 1, 1, 1];
-    this.selected = [false, false, false, false, false, false];
-    this.totalScore = 0;
-    this.roundScore = 0;
-    this.rollsLeft = 3;
-    this.gameOver = false;
-  }
+// Инициализация новой игры
+function createNewGame() {
+  return {
+    dice: [1, 1, 1, 1, 1, 1],
+    selected: [false, false, false, false, false, false],
+    totalScore: 0,
+    roundScore: 0,
+    rollsLeft: 3,
+    gameOver: false
+  };
 }
 
 // Маршруты
@@ -125,46 +69,99 @@ app.get('/', (req, res) => {
 
 app.get('/game', (req, res) => {
   if (!req.session.game) {
-    req.session.game = new ZonkGame();
+    req.session.game = createNewGame();
   }
+  
   const game = req.session.game;
+  const currentScore = gameLogic.calculateScore(game.dice, game.selected);
+  const zonk = gameLogic.isZonk(game.dice, game.selected);
+  
   res.render('game', { 
     game: game,
-    dice: game.dice,
-    selected: game.selected,
-    totalScore: game.totalScore,
-    roundScore: game.roundScore,
-    rollsLeft: game.rollsLeft,
-    gameOver: game.gameOver
+    currentScore: currentScore,
+    zonk: zonk
   });
 });
 
 app.post('/roll', (req, res) => {
   if (!req.session.game) {
-    req.session.game = new ZonkGame();
+    req.session.game = createNewGame();
   }
-  req.session.game.rollDice();
+  
+  const game = req.session.game;
+  
+  if (game.rollsLeft > 0 && !game.gameOver) {
+    // Сбрасываем выбор если это первый бросок
+    if (game.rollsLeft === 3) {
+      game.selected = [false, false, false, false, false, false];
+    }
+    
+    // Бросаем невыбранные кости
+    for (let i = 0; i < 6; i++) {
+      if (!game.selected[i]) {
+        game.dice[i] = Math.floor(Math.random() * 6) + 1;
+      }
+    }
+    
+    game.rollsLeft--;
+    
+    // Проверяем ZONK
+    const currentScore = gameLogic.calculateScore(game.dice, game.selected);
+    if (currentScore === 0 && game.rollsLeft < 3) {
+      game.roundScore = 0;
+    } else {
+      game.roundScore = currentScore;
+    }
+  }
+  
   res.redirect('/game');
 });
 
 app.post('/toggle/:index', (req, res) => {
   if (!req.session.game) {
-    req.session.game = new ZonkGame();
+    req.session.game = createNewGame();
   }
-  req.session.game.toggleDice(parseInt(req.params.index));
+  
+  const game = req.session.game;
+  const index = parseInt(req.params.index);
+  
+  if (game.rollsLeft < 3 && !game.gameOver) {
+    game.selected[index] = !game.selected[index];
+    game.roundScore = gameLogic.calculateScore(game.dice, game.selected);
+  }
+  
   res.redirect('/game');
 });
 
 app.post('/take', (req, res) => {
   if (!req.session.game) {
-    req.session.game = new ZonkGame();
+    req.session.game = createNewGame();
   }
-  req.session.game.takePoints();
+  
+  const game = req.session.game;
+  
+  if (!game.gameOver) {
+    game.totalScore += game.roundScore;
+    game.roundScore = 0;
+    game.rollsLeft = 3;
+    game.selected = [false, false, false, false, false, false];
+    
+    // Автоматически бросаем новые кости
+    for (let i = 0; i < 6; i++) {
+      game.dice[i] = Math.floor(Math.random() * 6) + 1;
+    }
+    
+    // Проверяем победу
+    if (game.totalScore >= 1000) {
+      game.gameOver = true;
+    }
+  }
+  
   res.redirect('/game');
 });
 
 app.post('/reset', (req, res) => {
-  req.session.game = new ZonkGame();
+  req.session.game = createNewGame();
   res.redirect('/game');
 });
 
