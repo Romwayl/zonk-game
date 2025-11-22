@@ -244,4 +244,58 @@ button.reset-btn {
     .controls {
         grid-template-columns: 1fr;
     }
+}/* Добавь в конец файла */
+
+.zonk-count {
+    text-align: center;
+    font-size: 1.1em;
+    font-weight: bold;
+    padding: 10px;
+    background: rgba(231, 76, 60, 0.2);
+    border-radius: 10px;
+    color: #c0392b;
+}
+
+.game-info {
+    margin: 20px 0;
+}
+
+.info-message {
+    text-align: center;
+    font-size: 1.2em;
+    padding: 15px;
+    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+    border-radius: 10px;
+    color: #856404;
+    border-left: 4px solid #f39c12;
+}
+
+.combinations {
+    margin-top: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 15px;
+}
+
+.combinations h3 {
+    text-align: center;
+    margin-bottom: 15px;
+    color: #495057;
+}
+
+.combo-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    text-align: center;
+}
+
+.combo-list span {
+    padding: 8px;
+    background: white;
+    border-radius: 8px;
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #495057;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
