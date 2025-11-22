@@ -10,9 +10,16 @@
     <div class="container">
         <h1>🎲 ZONK Game 🎲</h1>
         
+        <% if (game.gameOver) { %>
+            <div class="win-message">
+                🏆 ПОБЕДА! 🏆<br>
+                Твой счет: <%= game.totalScore %>
+            </div>
+        <% } %>
+        
         <div class="score-board">
             <div class="total-score">Общий счет: <%= game.totalScore %></div>
-            <div class="round-score">Очки за раунд: <%= game.calculateScore() %></div>
+            <div class="round-score">Очки за раунд: <%= currentScore %></div>
             <div class="rolls-left">Бросков осталось: <%= game.rollsLeft %></div>
         </div>
 
@@ -20,31 +27,32 @@
             <% game.dice.forEach((die, index) => { %>
                 <div class="dice <%= game.selected[index] ? 'selected' : '' %>" 
                      onclick="toggleDice(<%= index %>)">
-                    <%= die === 0 ? '?' : die %>
+                    <span class="dice-value"><%= die %></span>
                 </div>
             <% }); %>
         </div>
 
         <div class="controls">
             <form action="/roll" method="POST">
-                <button type="submit" <%= game.rollsLeft === 0 ? 'disabled' : '' %>>
-                    Бросить кости (<%= game.rollsLeft %>)
+                <button type="submit" <%= game.rollsLeft === 0 || game.gameOver ? 'disabled' : '' %>>
+                    🎲 Бросить кости (<%= game.rollsLeft %>)
                 </button>
             </form>
 
             <form action="/take" method="POST">
-                <button type="submit" <%= game.calculateScore() === 0 ? 'disabled' : '' %>>
-                    Забрать очки
+                <button type="submit" class="take-btn" 
+                        <%= currentScore === 0 || game.gameOver ? 'disabled' : '' %>>
+                    💰 Забрать очки (<%= currentScore %>)
                 </button>
             </form>
 
             <form action="/reset" method="POST">
-                <button type="submit">Новая игра</button>
+                <button type="submit" class="reset-btn">🔄 Новая игра</button>
             </form>
         </div>
 
-        <% if (game.isZonk() && game.rollsLeft < 3) { %>
-            <div class="zonk-message">ZONK! Нет очков в этом раунде!</div>
+        <% if (zonk && game.rollsLeft < 3) { %>
+            <div class="zonk-message">💥 ZONK! Нет очков в этом раунде!</div>
         <% } %>
     </div>
 
