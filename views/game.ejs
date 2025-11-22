@@ -8,12 +8,12 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎲 ZONK Game 🎲</h1>
+        <h1>🎲 ZONK - Настоящие правила! 🎲</h1>
         
         <% if (game.gameOver) { %>
             <div class="win-message">
                 🏆 ПОБЕДА! 🏆<br>
-                Твой счет: <%= game.totalScore %>
+                Ты набрал <%= game.totalScore %> очков!
             </div>
         <% } %>
         
@@ -21,6 +21,9 @@
             <div class="total-score">Общий счет: <%= game.totalScore %></div>
             <div class="round-score">Очки за раунд: <%= currentScore %></div>
             <div class="rolls-left">Бросков осталось: <%= game.rollsLeft %></div>
+            <% if (game.zonkCount > 0) { %>
+                <div class="zonk-count">ZONK'ов подряд: <%= game.zonkCount %></div>
+            <% } %>
         </div>
 
         <div class="dice-container">
@@ -32,6 +35,15 @@
             <% }); %>
         </div>
 
+        <div class="game-info">
+            <% if (!game.hasMinimumPoints && game.totalScore === 0) { %>
+                <div class="info-message">⚠️ Нужно набрать минимум 300 очков для первого взятия!</div>
+            <% } %>
+            <% if (allDiceUsed) { %>
+                <div class="info-message">🎉 Hot Dice! Все кости дают очки - бросай снова!</div>
+            <% } %>
+        </div>
+
         <div class="controls">
             <form action="/roll" method="POST">
                 <button type="submit" <%= game.rollsLeft === 0 || game.gameOver ? 'disabled' : '' %>>
@@ -41,7 +53,7 @@
 
             <form action="/take" method="POST">
                 <button type="submit" class="take-btn" 
-                        <%= currentScore === 0 || game.gameOver ? 'disabled' : '' %>>
+                        <%= !canTake || game.gameOver ? 'disabled' : '' %>>
                     💰 Забрать очки (<%= currentScore %>)
                 </button>
             </form>
@@ -52,8 +64,29 @@
         </div>
 
         <% if (zonk && game.rollsLeft < 3) { %>
-            <div class="zonk-message">💥 ZONK! Нет очков в этом раунде!</div>
+            <div class="zonk-message">
+                💥 ZONK! Нет очков в этом раунде!<br>
+                <% if (game.zonkCount >= 2) { %>
+                    ⚠️ Следующий ZONK отнимет 500 очков!
+                <% } %>
+            </div>
         <% } %>
+
+        <div class="combinations">
+            <h3>🎯 Комбинации:</h3>
+            <div class="combo-list">
+                <span>1 = 100</span>
+                <span>5 = 50</span>
+                <span>3×1 = 1000</span>
+                <span>3×2 = 200</span>
+                <span>3×3 = 300</span>
+                <span>3×4 = 400</span>
+                <span>3×5 = 500</span>
+                <span>3×6 = 600</span>
+                <span>3 пары = 750</span>
+                <span>Прямая = 1500</span>
+            </div>
+        </div>
     </div>
 
     <script>
