@@ -5,139 +5,243 @@
 }
 
 body {
-    font-family: 'Arial', sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     padding: 20px;
+    color: #333;
 }
 
 .container {
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
-    background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    background: rgba(255, 255, 255, 0.95);
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    backdrop-filter: blur(10px);
 }
 
 h1 {
     text-align: center;
-    color: #333;
+    color: #2c3e50;
     margin-bottom: 30px;
-    font-size: 2.5em;
+    font-size: 3em;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
 }
 
 .rules {
-    background: #f8f9fa;
-    padding: 20px;
-    border-radius: 10px;
-    margin-bottom: 20px;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    padding: 25px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    border-left: 5px solid #667eea;
 }
 
 .rules h2 {
-    color: #555;
-    margin-bottom: 10px;
+    color: #495057;
+    margin-bottom: 15px;
+    font-size: 1.5em;
 }
 
 .rules ul {
-    list-style-position: inside;
-    color: #666;
+    list-style: none;
+    padding: 0;
+}
+
+.rules li {
+    padding: 8px 0;
+    padding-left: 25px;
+    position: relative;
+    color: #6c757d;
+    font-size: 1.1em;
+}
+
+.rules li:before {
+    content: "🎯";
+    position: absolute;
+    left: 0;
 }
 
 .start-btn {
     display: block;
-    width: 200px;
-    margin: 20px auto;
-    padding: 15px;
-    background: #28a745;
+    width: 250px;
+    margin: 30px auto;
+    padding: 18px;
+    background: linear-gradient(135deg, #28a745, #20c997);
     color: white;
     text-align: center;
     text-decoration: none;
-    border-radius: 8px;
-    font-size: 1.2em;
-    transition: background 0.3s;
+    border-radius: 12px;
+    font-size: 1.3em;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
 }
 
 .start-btn:hover {
-    background: #218838;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
 }
 
 .score-board {
-    display: flex;
-    justify-content: space-around;
-    margin: 20px 0;
-    padding: 15px;
-    background: #e9ecef;
-    border-radius: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 30px 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 15px;
+    color: white;
 }
 
 .score-board div {
+    text-align: center;
     font-size: 1.2em;
     font-weight: bold;
-    color: #495057;
+    padding: 10px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
 }
 
 .dice-container {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap: 10px;
-    margin: 30px 0;
+    gap: 15px;
+    margin: 40px 0;
 }
 
 .dice {
-    width: 60px;
-    height: 60px;
-    border: 2px solid #333;
-    border-radius: 10px;
+    width: 80px;
+    height: 80px;
+    border: 3px solid #34495e;
+    border-radius: 15px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5em;
+    font-size: 2em;
     font-weight: bold;
-    background: white;
+    background: linear-gradient(135deg, #ecf0f1, #bdc3c7);
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.dice:hover {
+    transform: scale(1.05);
 }
 
 .dice.selected {
-    background: #ffc107;
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    border-color: #f39c12;
     transform: scale(1.1);
+    box-shadow: 0 8px 25px rgba(243, 156, 18, 0.4);
 }
 
 .controls {
-    display: flex;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 15px;
-    margin: 20px 0;
+    margin: 30px 0;
 }
 
 button {
-    padding: 12px 24px;
+    padding: 15px 25px;
     border: none;
-    border-radius: 6px;
-    background: #007bff;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #3498db, #2980b9);
     color: white;
-    font-size: 1em;
+    font-size: 1.1em;
+    font-weight: bold;
     cursor: pointer;
-    transition: background 0.3s;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
 }
 
 button:hover:not(:disabled) {
-    background: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
 }
 
 button:disabled {
-    background: #6c757d;
+    background: linear-gradient(135deg, #95a5a6, #7f8c8d);
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+button.take-btn {
+    background: linear-gradient(135deg, #27ae60, #229954);
+}
+
+button.reset-btn {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
 }
 
 .zonk-message {
     text-align: center;
-    font-size: 1.5em;
-    color: #dc3545;
+    font-size: 2em;
+    color: #e74c3c;
     font-weight: bold;
-    margin-top: 20px;
-    padding: 10px;
-    background: #f8d7da;
-    border-radius: 5px;
+    margin: 20px 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #fed7d7, #feb2b2);
+    border-radius: 10px;
+    animation: pulse 1s infinite;
+}
+
+.win-message {
+    text-align: center;
+    font-size: 2.5em;
+    color: #27ae60;
+    font-weight: bold;
+    margin: 20px 0;
+    padding: 30px;
+    background: linear-gradient(135deg, #c6f6d5, #9ae6b4);
+    border-radius: 15px;
+    animation: celebrate 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes celebrate {
+    0% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
+    100% { transform: rotate(-2deg); }
+}
+
+.dice-value {
+    font-size: 2.5em;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+        margin: 10px;
+    }
+    
+    .dice-container {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+    
+    .dice {
+        width: 70px;
+        height: 70px;
+        font-size: 1.5em;
+    }
+    
+    h1 {
+        font-size: 2em;
+    }
+    
+    .controls {
+        grid-template-columns: 1fr;
+    }
 }
