@@ -3,108 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZONK Pro - Игра в кости</title>
+    <title>ZONK Multiplayer - Игра</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div class="container">
         <!-- Левая панель - Игроки -->
         <div class="players-panel">
-            <h2>🎮 Игроки</h2>
-            <ul class="player-list">
-                <li class="player-item">
-                    <span class="player-name">Роман Р.</span>
-                    <span class="player-score"><%= game.totalScore || 0 %></span>
-                </li>
-                <li class="player-item">
-                    <span class="player-name">Противник</span>
-                    <span class="player-score">–</span>
-                </li>
-                <li class="player-item">
-                    <span class="player-name">Игрок 3</span>
-                    <span class="player-score">–</span>
-                </li>
-                <li class="player-item">
-                    <span class="player-name">Игрок 4</span>
-                    <span class="player-score">–</span>
-                </li>
-            </ul>
+            <h2>🎮 Игроки <span id="playerCount">0/4</span></h2>
+            <div id="playersList" class="player-list">
+                <!-- Игроки будут добавляться через JavaScript -->
+            </div>
+            
+            <div id="waitingArea" class="waiting-area" style="margin-top: 20px;">
+                <h3>👥 Ожидание игроков...</h3>
+                <div id="roomInfo" style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; margin: 15px 0;">
+                    <div style="font-size: 0.9em; color: var(--text-secondary);">Код комнаты:</div>
+                    <div id="roomCode" style="font-size: 1.5em; font-weight: bold; color: var(--primary); text-align: center; margin: 10px 0;"></div>
+                    <button onclick="copyRoomCode()" class="btn btn-primary" style="width: 100%; padding: 10px;">
+                        📋 Скопировать приглашение
+                    </button>
+                </div>
+                <button id="startGameBtn" onclick="startGame()" class="btn btn-success" style="width: 100%; padding: 15px; display: none;">
+                    🚀 Начать игру
+                </button>
+            </div>
+
+            <div id="gameControls" style="display: none; margin-top: 20px;">
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;">
+                    <div style="font-size: 0.9em; color: var(--text-secondary);">Сейчас ходит:</div>
+                    <div id="currentPlayer" style="font-size: 1.2em; font-weight: bold; color: var(--accent);"></div>
+                </div>
+            </div>
         </div>
 
         <!-- Центральная игровая область -->
         <div class="game-area">
             <div class="game-title">
-                <h1>🎲 ZONK PRO</h1>
-                <div class="subtitle">Собирайте кубики с комбинациями!</div>
+                <h1>🎲 ZONK MULTIPLAYER</h1>
+                <div id="gameStatus" class="subtitle">Ожидание игроков...</div>
             </div>
 
-            <% if (game.gameOver) { %>
-                <div class="win-message">
-                    🏆 ПОБЕДА! 🏆<br>
-                    Ты набрал <%= game.totalScore %> очков!
-                </div>
-            <% } %>
-
-            <div class="score-board">
-                <div class="score-item">
-                    <div class="score-label">Общий счет</div>
-                    <div class="score-value"><%= game.totalScore || 0 %></div>
-                </div>
-                <div class="score-item">
-                    <div class="score-label">Очки раунда</div>
-                    <div class="score-value"><%= currentScore || 0 %></div>
-                </div>
-                <div class="score-item">
-                    <div class="score-label">Бросков</div>
-                    <div class="score-value"><%= game.rollsLeft || 3 %></div>
-                </div>
+            <div id="winnerMessage" class="win-message" style="display: none;">
+                <!-- Сообщение о победе -->
             </div>
 
-            <div class="dice-container">
-                <% game.dice.forEach((die, index) => { %>
-                    <div class="dice <%= game.selected && game.selected[index] ? 'selected' : '' %>" 
-                         onclick="toggleDice(<%= index %>)">
-                        <span class="dice-value"><%= die %></span>
+            <!-- Только для текущего игрока -->
+            <div id="currentPlayerArea" style="display: none;">
+                <div class="score-board">
+                    <div class="score-item">
+                        <div class="score-label">Мои очки</div>
+                        <div id="myScore" class="score-value">0</div>
                     </div>
-                <% }); %>
+                    <div class="score-item">
+                        <div class="score-label">Очки раунда</div>
+                        <div id="roundScore" class="score-value">0</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Кости для броска</div>
+                        <div id="diceToRoll" class="score-value">6</div>
+                    </div>
+                </div>
+
+                <div id="diceContainer" class="dice-container" style="display: none;">
+                    <!-- Кости будут добавляться через JavaScript -->
+                </div>
+
+                <div id="gameMessages">
+                    <!-- Сообщения игры -->
+                </div>
+
+                <div id="playerControls" class="controls" style="display: none;">
+                    <button id="rollBtn" onclick="rollDice()" class="btn btn-primary">
+                        🎲 Бросить кости
+                    </button>
+                    <button id="takeBtn" onclick="takePoints()" class="btn btn-success">
+                        💰 Сохранить очки
+                    </button>
+                    <button onclick="leaveGame()" class="btn btn-danger">
+                        🚪 Выйти
+                    </button>
+                </div>
             </div>
 
-            <% if (zonk && game.rollsLeft < 3) { %>
-                <div class="message zonk-message">
-                    💥 ZONK! Нет очков в этом раунде!
+            <!-- Для наблюдателей -->
+            <div id="observerArea" style="text-align: center; padding: 40px;">
+                <div style="font-size: 1.5em; color: var(--text-secondary); margin-bottom: 20px;">
+                    👀 Вы наблюдаете за игрой
                 </div>
-            <% } %>
-
-            <% if (allDiceUsed) { %>
-                <div class="message" style="background: linear-gradient(135deg, #74b9ff, #0984e3); color: white;">
-                    🎉 Hot Dice! Все кости дают очки - бросай снова!
+                <div class="score-board">
+                    <div class="score-item">
+                        <div class="score-label">Ход игрока</div>
+                        <div id="observerCurrentPlayer" class="score-value">-</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Очки раунда</div>
+                        <div id="observerRoundScore" class="score-value">0</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Кости для броска</div>
+                        <div id="observerDiceToRoll" class="score-value">6</div>
+                    </div>
                 </div>
-            <% } %>
-
-            <div class="controls">
-                <form action="/roll" method="POST">
-                    <button type="submit" class="btn btn-primary" 
-                            <%= game.rollsLeft === 0 || game.gameOver ? 'disabled' : '' %>>
-                        🎲 Бросить (<%= game.rollsLeft %>)
-                    </button>
-                </form>
-
-                <form action="/take" method="POST">
-                    <button type="submit" class="btn btn-success" 
-                            <%= !canTake || game.gameOver ? 'disabled' : '' %>>
-                        💰 Сохранить (<%= currentScore || 0 %>)
-                    </button>
-                </form>
-
-                <form action="/reset" method="POST">
-                    <button type="submit" class="btn btn-danger">
-                        🔄 Новая игра
-                    </button>
-                </form>
+                <div id="observerDice" class="dice-container" style="margin: 30px 0;">
+                    <!-- Кости наблюдателя -->
+                </div>
+                <button onclick="leaveGame()" class="btn btn-danger">
+                    🚪 Выйти из игры
+                </button>
             </div>
         </div>
 
-        <!-- Правая панель - Комбинации -->
+        <!-- Правая панель - Комбинации и чат -->
         <div class="combinations-panel">
             <h2>🎯 Комбинации</h2>
             
@@ -143,53 +153,241 @@
                 </div>
             </div>
 
-            <div class="special-features">
-                <div class="feature-item">
-                    <div class="feature-title">🎭 Бросок с джокером</div>
-                    <div class="feature-desc">Поможет собрать хорошую комбинацию</div>
+            <!-- Чат -->
+            <div class="chat-container" style="margin-top: 30px;">
+                <h3>💬 Чат</h3>
+                <div id="chatMessages" style="height: 200px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px; margin: 10px 0;">
+                    <!-- Сообщения чата -->
                 </div>
-                <div class="feature-item">
-                    <div class="feature-title">⚡ Дополнительный бросок</div>
-                    <div class="feature-desc">Бросить еще шесть кубиков за один ход</div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-title">🛡️ Защита от ZONK</div>
-                    <div class="feature-desc">Отмена хода при получении ZONK</div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="chatInput" placeholder="Введите сообщение..." 
+                           style="flex: 1; padding: 12px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: white;">
+                    <button onclick="sendMessage()" class="btn btn-primary">📤</button>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        function toggleDice(index) {
-            fetch('/toggle/' + index, { method: 'POST' })
-                .then(() => window.location.reload());
+        const socket = io();
+        const roomId = '<%= roomId %>';
+        let myPlayerId = null;
+        let isMyTurn = false;
+
+        // Подключение к комнате
+        socket.emit('joinRoom', roomId);
+
+        socket.on('gameState', (gameState) => {
+            updateGameState(gameState);
+        });
+
+        socket.on('playerJoined', (player) => {
+            addMessage('system', `Игрок ${player.username} присоединился`);
+        });
+
+        socket.on('playerLeft', (player) => {
+            addMessage('system', `Игрок ${player.username} вышел`);
+        });
+
+        socket.on('chatMessage', (data) => {
+            addMessage(data.player, data.message);
+        });
+
+        function updateGameState(gameState) {
+            // Обновляем список игроков
+            updatePlayersList(gameState.players);
+            
+            // Обновляем информацию о комнате
+            document.getElementById('roomCode').textContent = gameState.roomId;
+            document.getElementById('playerCount').textContent = `${gameState.players.length}/4`;
+            
+            // Определяем моего игрока
+            myPlayerId = socket.id;
+            const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            isMyTurn = currentPlayer && currentPlayer.id === myPlayerId;
+
+            // Обновляем статус игры
+            updateGameStatus(gameState, myPlayer, currentPlayer);
+            
+            // Обновляем элементы управления
+            updateControls(gameState, myPlayer, currentPlayer);
         }
 
-        // Добавляем анимацию броска
-        document.addEventListener('DOMContentLoaded', function() {
-            const dice = document.querySelectorAll('.dice');
-            dice.forEach(die => {
-                die.style.animation = 'diceAppear 0.5s ease-out';
+        function updatePlayersList(players) {
+            const playersList = document.getElementById('playersList');
+            playersList.innerHTML = '';
+            
+            players.forEach((player, index) => {
+                const playerElement = document.createElement('div');
+                playerElement.className = 'player-item';
+                playerElement.innerHTML = `
+                    <span class="player-name">${player.username} ${player.id === myPlayerId ? ' (Вы)' : ''}</span>
+                    <span class="player-score">${player.score}</span>
+                `;
+                playersList.appendChild(playerElement);
             });
+        }
+
+        function updateGameStatus(gameState, myPlayer, currentPlayer) {
+            const gameStatus = document.getElementById('gameStatus');
+            const winnerMessage = document.getElementById('winnerMessage');
+            const waitingArea = document.getElementById('waitingArea');
+            const gameControls = document.getElementById('gameControls');
+            
+            if (gameState.status === 'waiting') {
+                gameStatus.textContent = `Ожидание игроков... (${gameState.players.length}/4)`;
+                waitingArea.style.display = 'block';
+                gameControls.style.display = 'none';
+                winnerMessage.style.display = 'none';
+                
+                // Показываем кнопку начала игры если есть минимум 2 игрока и я создатель
+                document.getElementById('startGameBtn').style.display = 
+                    gameState.players.length >= 2 ? 'block' : 'none';
+            } else if (gameState.status === 'playing') {
+                gameStatus.textContent = 'Игра идет!';
+                waitingArea.style.display = 'none';
+                gameControls.style.display = 'block';
+                winnerMessage.style.display = 'none';
+                
+                document.getElementById('currentPlayer').textContent = 
+                    currentPlayer.username + (isMyTurn ? ' (Вы)' : '');
+            } else if (gameState.status === 'finished') {
+                gameStatus.textContent = 'Игра завершена!';
+                winnerMessage.style.display = 'block';
+                winnerMessage.innerHTML = `🏆 ПОБЕДА!<br>${gameState.winner} выигрывает с ${currentPlayer.score} очками!`;
+            }
+        }
+
+        function updateControls(gameState, myPlayer, currentPlayer) {
+            const currentPlayerArea = document.getElementById('currentPlayerArea');
+            const observerArea = document.getElementById('observerArea');
+            
+            if (myPlayer) {
+                // Я игрок
+                currentPlayerArea.style.display = 'block';
+                observerArea.style.display = 'none';
+                
+                document.getElementById('myScore').textContent = myPlayer.score;
+                document.getElementById('roundScore').textContent = myPlayer.roundScore;
+                document.getElementById('diceToRoll').textContent = myPlayer.diceToRoll;
+                
+                if (isMyTurn) {
+                    document.getElementById('playerControls').style.display = 'grid';
+                    document.getElementById('diceContainer').style.display = 'grid';
+                    updateDice(myPlayer.dice, myPlayer.selected, true);
+                    
+                    document.getElementById('rollBtn').disabled = myPlayer.diceToRoll === 0;
+                    document.getElementById('takeBtn').disabled = myPlayer.roundScore === 0 || 
+                        (myPlayer.score === 0 && myPlayer.roundScore < 300);
+                } else {
+                    document.getElementById('playerControls').style.display = 'none';
+                    document.getElementById('diceContainer').style.display = 'none';
+                }
+            } else {
+                // Я наблюдатель
+                currentPlayerArea.style.display = 'none';
+                observerArea.style.display = 'block';
+                
+                document.getElementById('observerCurrentPlayer').textContent = currentPlayer.username;
+                document.getElementById('observerRoundScore').textContent = currentPlayer.roundScore;
+                document.getElementById('observerDiceToRoll').textContent = currentPlayer.diceToRoll;
+                updateObserverDice(currentPlayer.dice, currentPlayer.selected);
+            }
+        }
+
+        function updateDice(dice, selected, interactive) {
+            const container = document.getElementById('diceContainer');
+            container.innerHTML = '';
+            
+            dice.forEach((value, index) => {
+                const diceElement = document.createElement('div');
+                diceElement.className = `dice ${selected[index] ? 'selected' : ''}`;
+                diceElement.innerHTML = `<span class="dice-value">${value}</span>`;
+                
+                if (interactive && isMyTurn && !selected[index]) {
+                    diceElement.onclick = () => toggleDice(index);
+                }
+                
+                container.appendChild(diceElement);
+            });
+        }
+
+        function updateObserverDice(dice, selected) {
+            const container = document.getElementById('observerDice');
+            container.innerHTML = '';
+            
+            dice.forEach((value, index) => {
+                const diceElement = document.createElement('div');
+                diceElement.className = `dice ${selected[index] ? 'selected' : ''}`;
+                diceElement.innerHTML = `<span class="dice-value">${value}</span>`;
+                container.appendChild(diceElement);
+            });
+        }
+
+        function addMessage(sender, message) {
+            const chat = document.getElementById('chatMessages');
+            const messageElement = document.createElement('div');
+            messageElement.style.marginBottom = '8px';
+            messageElement.style.padding = '8px';
+            messageElement.style.background = 'rgba(255,255,255,0.05)';
+            messageElement.style.borderRadius = '5px';
+            
+            if (sender === 'system') {
+                messageElement.innerHTML = `<span style="color: var(--accent);">⚡ ${message}</span>`;
+            } else {
+                messageElement.innerHTML = `<strong>${sender}:</strong> ${message}`;
+            }
+            
+            chat.appendChild(messageElement);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        // Игровые действия
+        function startGame() {
+            socket.emit('startGame', roomId);
+        }
+
+        function rollDice() {
+            socket.emit('rollDice', roomId);
+        }
+
+        function toggleDice(index) {
+            socket.emit('toggleDice', { roomId, index });
+        }
+
+        function takePoints() {
+            socket.emit('takePoints', roomId);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (message) {
+                socket.emit('chatMessage', { roomId, message });
+                input.value = '';
+            }
+        }
+
+        function copyRoomCode() {
+            const roomCode = document.getElementById('roomCode').textContent;
+            navigator.clipboard.writeText(`Присоединяйся к моей игре в ZONK! Код комнаты: ${roomCode}\n${window.location.origin}/game/${roomId}`);
+            alert('Приглашение скопировано! Отправь друзьям.');
+        }
+
+        function leaveGame() {
+            if (confirm('Вы уверены, что хотите выйти из игры?')) {
+                window.location.href = '/';
+            }
+        }
+
+        // Обработка Enter в чате
+        document.getElementById('chatInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
         });
     </script>
-
-    <style>
-        @keyframes diceAppear {
-            0% { 
-                transform: scale(0) rotate(-180deg);
-                opacity: 0;
-            }
-            100% { 
-                transform: scale(1) rotate(0deg);
-                opacity: 1;
-            }
-        }
-
-        .dice {
-            animation: diceAppear 0.5s ease-out;
-        }
-    </style>
 </body>
 </html>
