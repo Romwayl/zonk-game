@@ -184,7 +184,18 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Validate currentPlayerIndex is within bounds
+        if (game.currentPlayerIndex >= game.players.length) {
+            game.currentPlayerIndex = 0;
+        }
+        
         const currentPlayer = game.players[game.currentPlayerIndex];
+        
+        if (!currentPlayer) {
+            debugLog('❌ NO CURRENT PLAYER', { roomId });
+            if (cb) cb({ error: 'No current player' });
+            return;
+        }
         
         // Validate that the caller is the current player
         if (currentPlayer.id !== socket.id) {
@@ -281,8 +292,13 @@ io.on('connection', (socket) => {
                     games.delete(roomId);
                     debugLog('🗑️ GAME DELETED', { roomId });
                 } else {
-                    // If removed player was current player, reset to first player
-                    if (game.currentPlayerIndex >= game.players.length) {
+                    // Adjust currentPlayerIndex if needed
+                    // If removed player was before current player, decrement index
+                    if (playerIndex < game.currentPlayerIndex) {
+                        game.currentPlayerIndex--;
+                    }
+                    // If removed player was the current player or index is now out of bounds, reset to 0
+                    else if (playerIndex === game.currentPlayerIndex || game.currentPlayerIndex >= game.players.length) {
                         game.currentPlayerIndex = 0;
                     }
                     
