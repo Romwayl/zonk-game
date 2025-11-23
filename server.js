@@ -185,7 +185,7 @@ io.on('connection', (socket) => {
         }
         
         // Validate currentPlayerIndex is within bounds
-        if (game.currentPlayerIndex >= game.players.length) {
+        if (game.currentPlayerIndex < 0 || game.currentPlayerIndex >= game.players.length) {
             game.currentPlayerIndex = 0;
         }
         
@@ -208,7 +208,7 @@ io.on('connection', (socket) => {
         }
         
         // Roll the dice
-        const numDice = currentPlayer.diceToRoll || 6;
+        const numDice = currentPlayer.diceToRoll ?? 6;
         const rolledDice = rollDice(numDice);
         
         // Update player's dice
