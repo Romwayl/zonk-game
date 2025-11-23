@@ -3,23 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zonk Game</title>
+    <title>ZONK Multiplayer</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🎲 Добро пожаловать в ZONK! 🎲</h1>
-        <div class="rules">
-            <h2>Правила игры:</h2>
-            <ul>
-                <li>Бросай кости и набирай очки</li>
-                <li>1 = 100 очков, 5 = 50 очков</li>
-                <li>3 одинаковые = номинал × 100 (три единицы = 1000)</li>
-                <li>За ход можно бросать до 3 раз</li>
-                <li>Если после броска нет очков - ZONK! (0 очков за ход)</li>
-            </ul>
+    <div class="container" style="grid-template-columns: 1fr; max-width: 1000px;">
+        <div class="game-area">
+            <div class="game-title">
+                <h1>🎲 ZONK MULTIPLAYER</h1>
+                <div class="subtitle">Играй с друзьями в реальном времени!</div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 40px 0;">
+                <!-- Создать игру -->
+                <div class="combinations-panel" style="text-align: center;">
+                    <h2>🆕 Создать игру</h2>
+                    <div style="margin: 25px 0;">
+                        <input type="text" id="usernameCreate" placeholder="Твое имя" 
+                               style="width: 100%; padding: 15px; margin-bottom: 15px; border: none; border-radius: 10px; font-size: 1.1em;">
+                        <button onclick="createGame()" class="btn btn-primary" style="width: 100%;">
+                            🚀 Создать комнату
+                        </button>
+                    </div>
+                    <div class="feature-desc">
+                        Создай комнату и пригласи друзей по ссылке
+                    </div>
+                </div>
+
+                <!-- Присоединиться -->
+                <div class="combinations-panel" style="text-align: center;">
+                    <h2>🎯 Присоединиться</h2>
+                    <div style="margin: 25px 0;">
+                        <input type="text" id="usernameJoin" placeholder="Твое имя" 
+                               style="width: 100%; padding: 15px; margin-bottom: 15px; border: none; border-radius: 10px; font-size: 1.1em;">
+                        <input type="text" id="roomCode" placeholder="Код комнаты" 
+                               style="width: 100%; padding: 15px; margin-bottom: 15px; border: none; border-radius: 10px; font-size: 1.1em;">
+                        <button onclick="joinGame()" class="btn btn-success" style="width: 100%;">
+                            ✅ Присоединиться
+                        </button>
+                    </div>
+                    <div class="feature-desc">
+                        Введи код комнаты от друга
+                    </div>
+                </div>
+            </div>
+
+            <!-- Быстрая игра -->
+            <div class="combinations-panel" style="text-align: center; margin-top: 20px;">
+                <h2>⚡ Быстрая игра</h2>
+                <button onclick="quickPlay()" class="btn btn-primary" style="padding: 20px 40px; font-size: 1.3em; margin: 20px 0;">
+                    🎮 Найти случайную игру
+                </button>
+                <div class="feature-desc">
+                    Найди случайных соперников онлайн
+                </div>
+            </div>
+
+            <!-- Статистика -->
+            <div class="combinations-panel" style="margin-top: 30px;">
+                <h2>📊 Онлайн сейчас</h2>
+                <div style="text-align: center; font-size: 2em; color: var(--primary); margin: 20px 0;">
+                    <span id="onlineCount">0</span> игроков
+                </div>
+                <div style="text-align: center; color: var(--text-secondary);">
+                    Присоединяйся к сообществу ZONK!
+                </div>
+            </div>
         </div>
-        <a href="/game" class="start-btn">Начать игру!</a>
     </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let onlineCount = 0;
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('onlineCount', (count) => {
+            onlineCount = count;
+            document.getElementById('onlineCount').textContent = count;
+        });
+
+        function createGame() {
+            const username = document.getElementById('usernameCreate').value || 'Игрок';
+            socket.emit('createGame', username);
+        }
+
+        function joinGame() {
+            const username = document.getElementById('usernameJoin').value || 'Игрок';
+            const roomCode = document.getElementById('roomCode').value;
+            if (roomCode) {
+                socket.emit('joinGame', { roomId: roomCode, username });
+            } else {
+                alert('Введите код комнаты');
+            }
+        }
+
+        function quickPlay() {
+            alert('Система быстрой игры скоро будет добавлена!');
+        }
+
+        socket.on('gameCreated', (roomId) => {
+            window.location.href = `/game/${roomId}`;
+        });
+
+        socket.on('gameJoined', (roomId) => {
+            window.location.href = `/game/${roomId}`;
+        });
+
+        socket.on('error', (message) => {
+            alert('Ошибка: ' + message);
+        });
+    </script>
 </body>
 </html>
