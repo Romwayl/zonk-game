@@ -69,7 +69,8 @@ io.on('connection', (socket) => {
             }],
             currentPlayerIndex: 0,
             status: 'waiting',
-            winner: null
+            winner: null,
+            cleanupTimer: null
         };
         
         games.set(roomId, game);
@@ -102,6 +103,13 @@ io.on('connection', (socket) => {
         const game = games.get(roomId);
         
         if (game) {
+            // If cleanup timer is set, clear it (player is reconnecting)
+            if (game.cleanupTimer) {
+                clearTimeout(game.cleanupTimer);
+                game.cleanupTimer = null;
+                debugLog('⏰ CLEANUP TIMER CLEARED', { roomId });
+            }
+            
             // Check if player is not already in the game
             const existingPlayer = game.players.find(p => p.id === socket.id);
             
@@ -158,18 +166,47 @@ io.on('connection', (socket) => {
     socket.on('startGame', (roomId) => {
         debugLog('🎯 START GAME REQUEST', { roomId, socketId: socket.id });
         
-        const game = games.get(roomId);
-        if (game && game.players.length >= 2 && game.players[0].id === socket.id) {
-            game.status = 'playing';
-            
-            debugLog('🚀 GAME STARTED', { 
-                roomId, 
-                players: game.players.map(p => p.username) 
-            });
-
-            io.to(roomId).emit('gameStarted');
-            io.to(roomId).emit('gameState', game);
+        if (!roomId) {
+            debugLog('❌ NO ROOM ID PROVIDED');
+            return;
         }
+        
+        const game = games.get(roomId);
+        
+        if (!game) {
+            debugLog('❌ ROOM NOT FOUND', roomId);
+            socket.emit('error', 'Комната не найдена');
+            return;
+        }
+        
+        if (game.players.length < 2) {
+            debugLog('❌ NOT ENOUGH PLAYERS', { 
+                roomId, 
+                playerCount: game.players.length 
+            });
+            socket.emit('error', 'Минимум 2 игрока для начала игры');
+            return;
+        }
+        
+        if (game.players[0].id !== socket.id) {
+            debugLog('❌ ONLY CREATOR CAN START', { 
+                roomId,
+                creatorId: game.players[0].id,
+                requesterId: socket.id
+            });
+            socket.emit('error', 'Только создатель может начать игру');
+            return;
+        }
+        
+        game.status = 'playing';
+        
+        debugLog('🚀 GAME STARTED', { 
+            roomId, 
+            players: game.players.map(p => p.username) 
+        });
+
+        io.to(roomId).emit('gameStarted');
+        io.to(roomId).emit('gameState', game);
     });
 
     // Roll dice
@@ -246,13 +283,32 @@ io.on('connection', (socket) => {
 
     // Чат
     socket.on('chatMessage', (data) => {
+        if (!data || !data.roomId) {
+            debugLog('❌ INVALID CHAT MESSAGE DATA', data);
+            return;
+        }
+        
         const { roomId, message } = data;
         debugLog('💬 CHAT MESSAGE', { roomId, message, socketId: socket.id });
         
         const game = games.get(roomId);
-        const player = game?.players.find(p => p.id === socket.id);
         
-        if (game && player && message.trim()) {
+        if (!game) {
+            debugLog('❌ ROOM NOT FOUND FOR CHAT', { roomId });
+            return;
+        }
+        
+        const player = game.players.find(p => p.id === socket.id);
+        
+        if (!player) {
+            debugLog('❌ PLAYER NOT FOUND IN GAME', { 
+                roomId, 
+                socketId: socket.id 
+            });
+            return;
+        }
+        
+        if (message && message.trim()) {
             debugLog('📤 SENDING CHAT MESSAGE', { 
                 roomId, 
                 player: player.username,
@@ -287,10 +343,23 @@ io.on('connection', (socket) => {
                     remainingPlayers: game.players.length
                 });
                 
-                // If game is empty, delete it
+                // If game is empty, set cleanup timer instead of deleting immediately
                 if (game.players.length === 0) {
-                    games.delete(roomId);
-                    debugLog('🗑️ GAME DELETED', { roomId });
+                    // Clear any existing timer
+                    if (game.cleanupTimer) {
+                        clearTimeout(game.cleanupTimer);
+                    }
+                    
+                    // Set 30-second grace period
+                    game.cleanupTimer = setTimeout(() => {
+                        games.delete(roomId);
+                        debugLog('🗑️ GAME DELETED (grace period expired)', { roomId });
+                    }, 30000);
+                    
+                    debugLog('⏰ CLEANUP TIMER SET', { 
+                        roomId, 
+                        gracePeriod: '30 seconds' 
+                    });
                 } else {
                     // Adjust currentPlayerIndex if needed
                     // If removed player was before current player, decrement index
