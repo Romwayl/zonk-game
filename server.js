@@ -30,6 +30,15 @@ function debugLog(message, data = null) {
     console.log(`[${timestamp}] ${message}`, data || '');
 }
 
+// Helper function to roll dice
+function rollDice(num) {
+    const dice = [];
+    for (let i = 0; i < num; i++) {
+        dice.push(Math.floor(Math.random() * 6) + 1);
+    }
+    return dice;
+}
+
 // Socket.io
 io.on('connection', (socket) => {
     debugLog('🔗 USER CONNECTED', { 
@@ -83,19 +92,51 @@ io.on('connection', (socket) => {
     });
 
     // Подключение к комнате
-    socket.on('joinRoom', (roomId) => {
+    socket.on('joinRoom', ({ roomId, username }) => {
         debugLog('🚪 JOIN ROOM REQUEST', { 
             roomId, 
+            username,
             socketId: socket.id 
         });
 
         const game = games.get(roomId);
         
         if (game) {
+            // Check if player is not already in the game
+            const existingPlayer = game.players.find(p => p.id === socket.id);
+            
+            if (!existingPlayer) {
+                // Add new player to the game
+                const playerNumber = game.players.length + 1;
+                const newPlayer = {
+                    id: socket.id,
+                    username: username || `Игрок ${playerNumber}`,
+                    score: 0,
+                    roundScore: 0,
+                    dice: [1, 1, 1, 1, 1, 1],
+                    selected: [false, false, false, false, false, false],
+                    diceToRoll: 6,
+                    firstRoll: true
+                };
+                
+                game.players.push(newPlayer);
+                
+                debugLog('👤 PLAYER ADDED', { 
+                    roomId, 
+                    username: newPlayer.username,
+                    playerCount: game.players.length
+                });
+            }
+            
             socket.join(roomId);
             debugLog('✅ ROOM JOINED', { 
                 roomId, 
                 players: game.players.length 
+            });
+
+            // Notify room that a player joined
+            io.to(roomId).emit('playerJoined', {
+                player: game.players.find(p => p.id === socket.id)
             });
 
             debugLog('📤 SENDING GAME STATE', { 
@@ -104,7 +145,7 @@ io.on('connection', (socket) => {
                 gameState: game
             });
 
-            socket.emit('gameState', game);
+            io.to(roomId).emit('gameState', game);
             debugLog('✅ GAME STATE SENT');
             
         } else {
@@ -129,6 +170,67 @@ io.on('connection', (socket) => {
             io.to(roomId).emit('gameStarted');
             io.to(roomId).emit('gameState', game);
         }
+    });
+
+    // Roll dice
+    socket.on('roll', ({ roomId }, cb) => {
+        debugLog('🎲 ROLL REQUEST', { roomId, socketId: socket.id });
+        
+        const game = games.get(roomId);
+        
+        if (!game) {
+            debugLog('❌ ROOM NOT FOUND', roomId);
+            if (cb) cb({ error: 'Room not found' });
+            return;
+        }
+        
+        const currentPlayer = game.players[game.currentPlayerIndex];
+        
+        // Validate that the caller is the current player
+        if (currentPlayer.id !== socket.id) {
+            debugLog('❌ NOT CURRENT PLAYER', { 
+                socketId: socket.id, 
+                currentPlayerId: currentPlayer.id 
+            });
+            if (cb) cb({ error: 'Not your turn' });
+            return;
+        }
+        
+        // Roll the dice
+        const numDice = currentPlayer.diceToRoll || 6;
+        const rolledDice = rollDice(numDice);
+        
+        // Update player's dice
+        currentPlayer.dice = rolledDice;
+        currentPlayer.firstRoll = false;
+        
+        debugLog('🎲 DICE ROLLED', { 
+            roomId,
+            player: currentPlayer.username,
+            dice: rolledDice
+        });
+        
+        // TODO: Implement scoring logic here
+        // - Check if roll is a zonk (no scoring dice)
+        // - Calculate available score from rolled dice
+        // - Update game state accordingly
+        
+        // TODO: Implement dice selection logic
+        // - Allow player to select scoring dice
+        // - Validate selections
+        // - Update roundScore
+        
+        // Emit events
+        io.to(roomId).emit('rolled', {
+            player: currentPlayer.username,
+            dice: rolledDice
+        });
+        io.to(roomId).emit('gameState', game);
+        
+        // Send callback response
+        if (cb) cb({ dice: rolledDice });
+        
+        debugLog('✅ ROLL COMPLETE', { roomId });
     });
 
     // Чат
@@ -159,6 +261,43 @@ io.on('connection', (socket) => {
             socketId: socket.id, 
             reason: reason 
         });
+        
+        // Remove player from all games
+        for (const [roomId, game] of games.entries()) {
+            const playerIndex = game.players.findIndex(p => p.id === socket.id);
+            
+            if (playerIndex !== -1) {
+                const removedPlayer = game.players[playerIndex];
+                game.players.splice(playerIndex, 1);
+                
+                debugLog('👤 PLAYER REMOVED', {
+                    roomId,
+                    username: removedPlayer.username,
+                    remainingPlayers: game.players.length
+                });
+                
+                // If game is empty, delete it
+                if (game.players.length === 0) {
+                    games.delete(roomId);
+                    debugLog('🗑️ GAME DELETED', { roomId });
+                } else {
+                    // If removed player was current player, reset to first player
+                    if (game.currentPlayerIndex >= game.players.length) {
+                        game.currentPlayerIndex = 0;
+                    }
+                    
+                    // Notify remaining players
+                    io.to(roomId).emit('playerLeft', {
+                        player: removedPlayer
+                    });
+                    io.to(roomId).emit('gameState', game);
+                    
+                    debugLog('📤 SENT playerLeft AND gameState', { roomId });
+                }
+                
+                break; // Player can only be in one game
+            }
+        }
     });
 
     // Ошибки
