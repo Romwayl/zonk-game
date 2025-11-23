@@ -6,7 +6,6 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// Важно: на Railway нужно явно указать CORS
 const io = socketIo(server, {
   cors: {
     origin: "*",
@@ -62,23 +61,7 @@ class ZonkGame {
         };
         
         this.players.push(player);
-        debugLog('Игрок добавлен', { username: player.username, roomId: this.roomId });
         return true;
-    }
-
-    removePlayer(playerId) {
-        const playerIndex = this.players.findIndex(p => p.id === playerId);
-        if (playerIndex !== -1) {
-            const player = this.players[playerIndex];
-            this.players.splice(playerIndex, 1);
-            
-            if (this.currentPlayerIndex >= playerIndex && this.currentPlayerIndex > 0) {
-                this.currentPlayerIndex--;
-            }
-            
-            return true;
-        }
-        return false;
     }
 
     getCurrentPlayer() {
@@ -87,13 +70,7 @@ class ZonkGame {
 
     nextPlayer() {
         if (this.players.length === 0) return;
-        
         this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
-        const player = this.getCurrentPlayer();
-        player.firstRoll = true;
-        player.diceToRoll = 6;
-        player.selected = [false, false, false, false, false, false];
-        player.roundScore = 0;
     }
 
     calculateScore(dice, selected) {
@@ -108,36 +85,16 @@ class ZonkGame {
             }
         }
 
-        const selectedDice = dice.filter((_, i) => selected[i]);
-        const selectedCounts = [0, 0, 0, 0, 0, 0, 0];
-        selectedDice.forEach(die => selectedCounts[die]++);
+        // 1 и 5 дают очки
+        score += counts[1] * 100;
+        score += counts[5] * 50;
 
-        // Шесть разных
-        if (selectedDice.length === 6 && new Set(selectedDice).size === 6) {
-            return 1500;
-        }
-
-        // Три пары
-        const pairs = selectedCounts.filter(count => count === 2);
-        if (pairs.length === 3) {
-            return 750;
-        }
-
-        // Комбинации одинаковых костей
+        // Комбинации
         for (let i = 1; i <= 6; i++) {
-            if (selectedCounts[i] >= 3) {
-                const baseScore = i === 1 ? 1000 : i * 100;
-                if (selectedCounts[i] === 3) score += baseScore;
-                else if (selectedCounts[i] === 4) score += baseScore * 2;
-                else if (selectedCounts[i] === 5) score += baseScore * 3;
-                else if (selectedCounts[i] === 6) score += baseScore * 4;
-                selectedCounts[i] = 0;
+            if (counts[i] >= 3) {
+                score += i === 1 ? 1000 : i * 100;
             }
         }
-
-        // Одиночные 1 и 5
-        score += selectedCounts[1] * 100;
-        score += selectedCounts[5] * 50;
 
         return score;
     }
@@ -152,11 +109,6 @@ class ZonkGame {
         for (let i = 1; i <= 6; i++) {
             if (counts[i] >= 3) return false;
         }
-        
-        const pairs = counts.filter(count => count === 2);
-        if (pairs.length === 3) return false;
-        
-        if (counts.filter(count => count === 1).length === 6) return false;
 
         return true;
     }
@@ -167,10 +119,6 @@ class ZonkGame {
             return currentScore >= 300;
         }
         return currentScore > 0;
-    }
-
-    isHotDice(dice, selected) {
-        return selected.every(s => s) && this.calculateScore(dice, selected) > 0;
     }
 }
 
@@ -236,13 +184,17 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Подключение к комнате
+    // Подключение к комнате (ВАЖНО!)
     socket.on('joinRoom', (roomId) => {
         try {
-            debugLog('Подключение к комнате', { roomId });
+            debugLog('Подключение к комнате', { roomId, socketId: socket.id });
             const game = games.get(roomId);
             if (game) {
                 socket.join(roomId);
+                debugLog('Успешное подключение к комнате', { 
+                    roomId, 
+                    players: game.players.length
+                });
                 io.to(roomId).emit('gameState', getGameState(game));
             }
         } catch (error) {
@@ -277,16 +229,10 @@ io.on('connection', (socket) => {
             if (game && player && player.id === socket.id && game.status === 'playing') {
                 const diceToRoll = player.firstRoll ? 6 : player.diceToRoll;
                 
-                if (player.firstRoll || player.diceToRoll === 6) {
-                    player.dice = Array(6).fill(0);
-                    player.selected = Array(6).fill(false);
-                }
-                
-                let rolled = 0;
-                for (let i = 0; i < 6 && rolled < diceToRoll; i++) {
-                    if (player.dice[i] === 0) {
+                // Бросаем кости
+                for (let i = 0; i < 6; i++) {
+                    if (!player.selected[i]) {
                         player.dice[i] = Math.floor(Math.random() * 6) + 1;
-                        rolled++;
                     }
                 }
                 
@@ -294,10 +240,6 @@ io.on('connection', (socket) => {
                 player.roundScore = game.calculateScore(player.dice, player.selected);
                 
                 if (game.isZonk(player.dice)) {
-                    io.to(roomId).emit('gameMessage', { 
-                        type: 'zonk', 
-                        player: player.username 
-                    });
                     player.roundScore = 0;
                     game.nextPlayer();
                 }
@@ -316,20 +258,12 @@ io.on('connection', (socket) => {
             const game = games.get(roomId);
             const player = game?.getCurrentPlayer();
             
-            if (game && player && player.id === socket.id && game.status === 'playing' && !player.firstRoll) {
+            if (game && player && player.id === socket.id && game.status === 'playing') {
                 player.selected[index] = !player.selected[index];
                 player.roundScore = game.calculateScore(player.dice, player.selected);
                 
                 const selectedCount = player.selected.filter(s => s).length;
                 player.diceToRoll = 6 - selectedCount;
-                
-                if (game.isHotDice(player.dice, player.selected)) {
-                    player.diceToRoll = 6;
-                    io.to(roomId).emit('gameMessage', { 
-                        type: 'hotDice', 
-                        player: player.username 
-                    });
-                }
                 
                 io.to(roomId).emit('gameState', getGameState(game));
             }
@@ -346,27 +280,16 @@ io.on('connection', (socket) => {
             
             if (game && player && player.id === socket.id && game.status === 'playing') {
                 if (game.canTakePoints(player)) {
-                    const pointsEarned = player.roundScore;
-                    player.score += pointsEarned;
-                    
-                    io.to(roomId).emit('gameMessage', { 
-                        type: 'takePoints', 
-                        player: player.username, 
-                        score: pointsEarned 
-                    });
+                    player.score += player.roundScore;
                     
                     if (player.score >= 1000) {
                         game.status = 'finished';
                         game.winner = player.username;
-                        io.to(roomId).emit('gameMessage', { 
-                            type: 'win', 
-                            player: player.username, 
-                            score: player.score 
-                        });
                     } else {
                         game.nextPlayer();
                     }
                     
+                    // Сбрасываем раунд
                     player.dice = [1, 1, 1, 1, 1, 1];
                     player.selected = [false, false, false, false, false, false];
                     player.diceToRoll = 6;
@@ -402,25 +325,6 @@ io.on('connection', (socket) => {
     // Отсоединение
     socket.on('disconnect', () => {
         debugLog('Пользователь отключен', socket.id);
-        
-        const roomId = players.get(socket.id);
-        if (roomId) {
-            const game = games.get(roomId);
-            if (game) {
-                const player = game.players.find(p => p.id === socket.id);
-                if (player) {
-                    io.to(roomId).emit('playerLeft', { username: player.username });
-                    game.removePlayer(socket.id);
-                    
-                    if (game.players.length === 0) {
-                        games.delete(roomId);
-                    } else {
-                        io.to(roomId).emit('gameState', getGameState(game));
-                    }
-                }
-            }
-            players.delete(socket.id);
-        }
     });
 });
 
@@ -444,22 +348,16 @@ app.get('/game/:roomId?', (req, res) => {
     res.render('game', { roomId: req.params.roomId || '' });
 });
 
-app.get('/create', (req, res) => {
-    res.render('create');
-});
-
 // Health check для Railway
 app.get('/health', (req, res) => {
     res.status(200).json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        games: games.size,
-        players: players.size
+        games: games.size
     });
 });
 
 // Запуск сервера
 server.listen(PORT, () => {
     console.log(`🎲 Zonk Multiplayer запущен на порту ${PORT}`);
-    console.log(`📍 Health check: http://localhost:${PORT}/health`);
 });
