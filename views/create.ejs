@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создать игру - ZONK</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container" style="grid-template-columns: 1fr; max-width: 500px;">
+        <div class="game-area">
+            <div class="game-title">
+                <h1>🆕 Создать игру</h1>
+            </div>
+
+            <div style="margin: 40px 0;">
+                <input type="text" id="username" placeholder="Введите ваше имя" 
+                       style="width: 100%; padding: 20px; margin-bottom: 20px; border: none; border-radius: 15px; font-size: 1.2em; background: rgba(255,255,255,0.1); color: white;">
+                
+                <button onclick="createGame()" class="btn btn-primary" style="width: 100%; padding: 20px; font-size: 1.3em;">
+                    🚀 Создать комнату
+                </button>
+            </div>
+
+            <div class="combinations-panel">
+                <h3>📋 Как пригласить друзей:</h3>
+                <ol style="text-align: left; line-height: 1.6; margin: 15px 0;">
+                    <li>Создайте комнату</li>
+                    <li>Отправьте друзьям код комнаты</li>
+                    <li>Начните игру когда все присоединятся</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        function createGame() {
+            const username = document.getElementById('username').value || 'Игрок';
+            socket.emit('createGame', username);
+        }
+
+        socket.on('gameCreated', (roomId) => {
+            window.location.href = `/game/${roomId}`;
+        });
+    </script>
+</body>
+</html>
