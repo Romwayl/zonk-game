@@ -1,381 +1,148 @@
-const socket = io();
-const roomId = '<%= roomId %>';
-let myPlayerId = null;
-let isMyTurn = false;
-
-// Расширенная отладка
-function debugLog(message, data = null) {
-    const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] 🎮 ${message}`, data || '');
-    updateDebugInfo(message);
-}
-
-function updateDebugInfo(message) {
-    const debugInfo = document.getElementById('debugInfo');
-    if (debugInfo) {
-        const line = document.createElement('div');
-        line.className = 'debug-line';
-        line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-        debugInfo.appendChild(line);
-        debugInfo.scrollTop = debugInfo.scrollHeight;
-    }
-}
-
-debugLog('Инициализация игры', { roomId });
-
-// Подключение к серверу
-socket.on('connect', () => {
-    debugLog('Подключен к серверу', { socketId: socket.id });
-    myPlayerId = socket.id;
-    
-    document.getElementById('debugStatus').textContent = 'Connected';
-    document.getElementById('debugSocketId').textContent = socket.id;
-    document.getElementById('debugRoom').textContent = roomId;
-
-    // Подключаемся к комнате
-    if (roomId && roomId !== '') {
-        debugLog('Подключение к комнате', roomId);
-        socket.emit('joinRoom', roomId);
-    } else {
-        debugLog('Ошибка: нет ID комнаты');
-        window.location.href = '/';
-    }
-});
-
-socket.on('disconnect', () => {
-    debugLog('Отключен от сервера');
-    document.getElementById('debugStatus').textContent = 'Disconnected';
-});
-
-socket.on('connect_error', (error) => {
-    debugLog('Ошибка подключения', error);
-    document.getElementById('debugStatus').textContent = 'Error';
-});
-
-// Обработчики игровых событий
-socket.on('gameState', (gameState) => {
-    debugLog('Получено состояние игры', { 
-        status: gameState.status, 
-        players: gameState.players.length,
-        currentPlayer: gameState.players[gameState.currentPlayerIndex]?.username 
-    });
-    updateGameState(gameState);
-});
-
-socket.on('playerJoined', (player) => {
-    debugLog('Игрок присоединился', player);
-    addChatMessage('system', `Игрок ${player.username} присоединился к игре`);
-});
-
-socket.on('playerLeft', (player) => {
-    debugLog('Игрок вышел', player);
-    addChatMessage('system', `Игрок ${player.username} вышел из игры`);
-});
-
-socket.on('gameStarted', () => {
-    debugLog('Игра началась!');
-    addChatMessage('system', '🎮 Игра началась! Удачи!');
-});
-
-socket.on('gameMessage', (data) => {
-    debugLog('Игровое сообщение', data);
-    handleGameMessage(data);
-});
-
-socket.on('chatMessage', (data) => {
-    debugLog('Сообщение в чате', data);
-    addChatMessage(data.player, data.message);
-});
-
-socket.on('error', (message) => {
-    debugLog('Ошибка от сервера', message);
-    alert('Ошибка: ' + message);
-});
-
-// Функции обновления интерфейса
-function updateGameState(gameState) {
-    debugLog('Обновление состояния игры', { 
-        status: gameState.status,
-        players: gameState.players.map(p => p.username)
-    });
-    
-    updatePlayersList(gameState);
-    updateRoomInfo(gameState);
-    updateGameStatus(gameState);
-    updateGameControls(gameState);
-}
-
-function updatePlayersList(gameState) {
-    const playersList = document.getElementById('playersList');
-    const playerCount = document.getElementById('playerCount');
-    
-    playersList.innerHTML = '';
-    playerCount.textContent = `${gameState.players.length}/4`;
-    
-    gameState.players.forEach((player, index) => {
-        const playerElement = document.createElement('div');
-        playerElement.className = `player-item ${index === gameState.currentPlayerIndex ? 'current-player' : ''}`;
-        
-        const isMe = player.id === myPlayerId;
-        playerElement.innerHTML = `
-            <span class="player-name">
-                ${player.username} ${isMe ? ' (Вы)' : ''}
-                ${index === gameState.currentPlayerIndex ? ' 🎯' : ''}
-            </span>
-            <span class="player-score">${player.score}</span>
-        `;
-        
-        playersList.appendChild(playerElement);
-    });
-    
-    debugLog('Список игроков обновлен', { count: gameState.players.length });
-}
-
-function updateRoomInfo(gameState) {
-    document.getElementById('roomCode').textContent = gameState.roomId;
-}
-
-function updateGameStatus(gameState) {
-    const gameStatus = document.getElementById('gameStatus');
-    const winnerMessage = document.getElementById('winnerMessage');
-    const waitingArea = document.getElementById('waitingArea');
-    const gameControls = document.getElementById('gameControls');
-    
-    if (gameState.status === 'waiting') {
-        gameStatus.textContent = `Ожидание игроков... (${gameState.players.length}/4)`;
-        waitingArea.style.display = 'block';
-        gameControls.style.display = 'none';
-        winnerMessage.style.display = 'none';
-        
-        // Показываем кнопку начала если есть минимум 2 игрока и я создатель
-        const canStart = gameState.players.length >= 2 && gameState.players[0].id === myPlayerId;
-        document.getElementById('startGameBtn').style.display = canStart ? 'block' : 'none';
-        
-        debugLog('Статус: Ожидание', { 
-            players: gameState.players.length, 
-            canStart: canStart,
-            amICreator: gameState.players[0]?.id === myPlayerId
-        });
-        
-    } else if (gameState.status === 'playing') {
-        gameStatus.textContent = 'Игра идет!';
-        waitingArea.style.display = 'none';
-        gameControls.style.display = 'block';
-        winnerMessage.style.display = 'none';
-        
-        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-        document.getElementById('currentPlayer').textContent = currentPlayer.username;
-        
-        debugLog('Статус: Игра идет', { currentPlayer: currentPlayer.username });
-        
-    } else if (gameState.status === 'finished') {
-        gameStatus.textContent = 'Игра завершена!';
-        winnerMessage.style.display = 'block';
-        winnerMessage.innerHTML = `🏆 ПОБЕДА!<br>${gameState.winner} выигрывает!`;
-        
-        debugLog('Статус: Завершена', { winner: gameState.winner });
-    }
-}
-
-function updateGameControls(gameState) {
-    const currentPlayerArea = document.getElementById('currentPlayerArea');
-    const observerArea = document.getElementById('observerArea');
-    
-    const myPlayer = gameState.players.find(p => p.id === myPlayerId);
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-    isMyTurn = currentPlayer && currentPlayer.id === myPlayerId;
-    
-    document.getElementById('debugMyTurn').textContent = isMyTurn ? 'YES' : 'NO';
-    document.getElementById('debugGameStatus').textContent = gameState.status;
-    
-    debugLog('Обновление контролов', { 
-        myPlayer: !!myPlayer, 
-        isMyTurn: isMyTurn,
-        gameStatus: gameState.status
-    });
-    
-    if (myPlayer) {
-        // Я игрок
-        currentPlayerArea.style.display = 'block';
-        observerArea.style.display = 'none';
-        
-        document.getElementById('myScore').textContent = myPlayer.score;
-        document.getElementById('roundScore').textContent = myPlayer.roundScore;
-        document.getElementById('diceToRoll').textContent = myPlayer.diceToRoll;
-        
-        if (isMyTurn && gameState.status === 'playing') {
-            document.getElementById('playerControls').style.display = 'grid';
-            document.getElementById('diceContainer').style.display = 'grid';
-            updateMyDice(myPlayer.dice, myPlayer.selected);
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZONK - Комната <%= roomId %></title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Левая панель: Игроки -->
+        <div class="players-panel">
+            <div class="panel-header">
+                <h2>👥 Игроки (<span id="playerCount">0/4</span>)</h2>
+            </div>
+            <div class="player-list" id="playersList">
+                <!-- Players will be added here dynamically -->
+            </div>
             
-            // Обновляем состояние кнопок
-            document.getElementById('rollBtn').disabled = myPlayer.diceToRoll === 0;
-            const canTake = myPlayer.roundScore > 0 && (myPlayer.score > 0 || myPlayer.roundScore >= 300);
-            document.getElementById('takeBtn').disabled = !canTake;
-            
-            debugLog('Мой ход', { 
-                diceToRoll: myPlayer.diceToRoll, 
-                canTake: canTake,
-                roundScore: myPlayer.roundScore
-            });
-            
-        } else {
-            document.getElementById('playerControls').style.display = 'none';
-            document.getElementById('diceContainer').style.display = 'none';
-            
-            if (gameState.status === 'playing') {
-                debugLog('Ход другого игрока', { currentPlayer: currentPlayer.username });
-            }
-        }
-    } else {
-        // Я наблюдатель
-        currentPlayerArea.style.display = 'none';
-        observerArea.style.display = 'block';
-        
-        document.getElementById('observerCurrentPlayer').textContent = currentPlayer.username;
-        document.getElementById('observerRoundScore').textContent = currentPlayer.roundScore;
-        document.getElementById('observerDiceToRoll').textContent = currentPlayer.diceToRoll;
-        updateObserverDice(currentPlayer.dice, currentPlayer.selected);
-        
-        debugLog('Режим наблюдателя', { currentPlayer: currentPlayer.username });
-    }
-}
+            <div class="combinations-panel" style="margin-top: 20px;">
+                <h3>🎲 Комната</h3>
+                <div style="font-size: 2em; margin: 10px 0; font-weight: bold;" id="roomCode">-</div>
+                <button onclick="copyRoomCode()" class="btn btn-secondary" style="width: 100%;">
+                    📋 Скопировать приглашение
+                </button>
+                <button onclick="leaveGame()" class="btn btn-danger" style="width: 100%; margin-top: 10px;">
+                    🚪 Выйти
+                </button>
+            </div>
+        </div>
 
-// Остальные функции остаются такими же как в предыдущем коде...
-// [Вставь сюда функции updateMyDice, updateObserverDice, startGame, rollDice, toggleDice, takePoints, sendMessage, copyRoomCode, leaveGame, addChatMessage, handleGameMessage]
+        <!-- Центр: Игровая зона -->
+        <div class="game-area">
+            <div class="game-title">
+                <h1 id="gameStatus">Загрузка...</h1>
+                <div class="subtitle">Ход: <span id="currentPlayer">-</span></div>
+            </div>
 
-// Игровые действия
-function startGame() {
-    debugLog('Нажата кнопка начала игры');
-    socket.emit('startGame', roomId);
-}
+            <!-- Область ожидания -->
+            <div id="waitingArea" style="display: none;">
+                <div class="combinations-panel" style="text-align: center; padding: 40px;">
+                    <h2>⏳ Ожидание игроков...</h2>
+                    <p style="margin: 20px 0;">Минимум 2 игрока для начала игры</p>
+                    <button id="startGameBtn" onclick="startGame()" class="btn btn-primary" style="display: none;">
+                        🚀 Начать игру
+                    </button>
+                </div>
+            </div>
 
-function rollDice() {
-    debugLog('Нажата кнопка броска костей');
-    socket.emit('rollDice', roomId);
-}
+            <!-- Сообщение о победе -->
+            <div id="winnerMessage" class="combinations-panel" style="display: none; text-align: center; padding: 40px; font-size: 2em;">
+            </div>
 
-function toggleDice(index) {
-    debugLog('Переключение кости', index);
-    socket.emit('toggleDice', { roomId, index });
-}
+            <!-- Игровые контролы -->
+            <div id="gameControls" style="display: none;">
+                <!-- Зона для активного игрока -->
+                <div id="currentPlayerArea" style="display: none;">
+                    <div class="combinations-panel">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 0.9em; opacity: 0.7;">Общий счет</div>
+                                <div style="font-size: 2em; font-weight: bold;" id="myScore">0</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 0.9em; opacity: 0.7;">Очки раунда</div>
+                                <div style="font-size: 2em; font-weight: bold; color: #4CAF50;" id="roundScore">0</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 0.9em; opacity: 0.7;">Костей</div>
+                                <div style="font-size: 2em; font-weight: bold;" id="diceToRoll">6</div>
+                            </div>
+                        </div>
 
-function takePoints() {
-    debugLog('Нажата кнопка взятия очков');
-    socket.emit('takePoints', roomId);
-}
+                        <!-- Кости -->
+                        <div class="dice-container" id="diceContainer" style="display: none;">
+                            <!-- Dice will be added here -->
+                        </div>
 
-function sendMessage() {
-    const input = document.getElementById('chatInput');
-    const message = input.value.trim();
-    
-    if (message) {
-        debugLog('Отправка сообщения', message);
-        socket.emit('chatMessage', { roomId, message });
-        input.value = '';
-    }
-}
+                        <!-- Кнопки управления -->
+                        <div id="playerControls" style="display: none; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+                            <button id="rollBtn" onclick="rollDice()" class="btn btn-primary">
+                                🎲 Бросить кости
+                            </button>
+                            <button id="takeBtn" onclick="takePoints()" class="btn btn-success">
+                                💰 Взять очки
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-function copyRoomCode() {
-    const roomCode = document.getElementById('roomCode').textContent;
-    const inviteText = `Присоединяйся к моей игре в ZONK! Код комнаты: ${roomCode}\n${window.location.origin}/game/${roomId}`;
-    
-    navigator.clipboard.writeText(inviteText).then(() => {
-        addChatMessage('system', 'Приглашение скопировано! Отправь друзьям.');
-    }).catch(() => {
-        alert('Скопируйте вручную: ' + inviteText);
-    });
-}
+                <!-- Зона для наблюдателя -->
+                <div id="observerArea" style="display: none;">
+                    <div class="combinations-panel" style="text-align: center;">
+                        <h2>👁️ Наблюдение</h2>
+                        <p>Ход игрока: <strong id="observerCurrentPlayer">-</strong></p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                            <div>
+                                <div style="opacity: 0.7;">Очки раунда</div>
+                                <div style="font-size: 1.5em; font-weight: bold;" id="observerRoundScore">0</div>
+                            </div>
+                            <div>
+                                <div style="opacity: 0.7;">Костей</div>
+                                <div style="font-size: 1.5em; font-weight: bold;" id="observerDiceToRoll">6</div>
+                            </div>
+                        </div>
+                        <div class="dice-container" id="observerDice">
+                            <!-- Dice will be added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-function leaveGame() {
-    if (confirm('Вы уверены, что хотите выйти из игры?')) {
-        window.location.href = '/';
-    }
-}
+        <!-- Правая панель: Чат -->
+        <div class="chat-panel">
+            <div class="panel-header">
+                <h2>💬 Чат</h2>
+            </div>
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be added here -->
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="chatInput" class="chat-input" placeholder="Напишите сообщение...">
+                    <button onclick="sendMessage()" class="btn btn-primary">Отправить</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-// Вспомогательные функции
-function addChatMessage(sender, message) {
-    const chat = document.getElementById('chatMessages');
-    const messageElement = document.createElement('div');
-    
-    if (sender === 'system') {
-        messageElement.className = 'chat-message system';
-        messageElement.textContent = message;
-    } else {
-        messageElement.className = 'chat-message';
-        messageElement.innerHTML = `<strong>${sender}:</strong> ${message}`;
-    }
-    
-    chat.appendChild(messageElement);
-    chat.scrollTop = chat.scrollHeight;
-}
+    <!-- Отладочная информация -->
+    <div class="debug-info">
+        <div class="debug-line">Status: <span id="debugStatus">Disconnected</span></div>
+        <div class="debug-line">Socket: <span id="debugSocketId">-</span></div>
+        <div class="debug-line">Room: <span id="debugRoom">-</span></div>
+        <div class="debug-line">My Turn: <span id="debugMyTurn">NO</span></div>
+        <div class="debug-line">Game Status: <span id="debugGameStatus">-</span></div>
+        <div id="debugInfo" style="max-height: 100px; overflow-y: auto; margin-top: 10px; font-size: 0.8em;"></div>
+    </div>
 
-function handleGameMessage(data) {
-    let message = '';
-    
-    switch(data.type) {
-        case 'zonk':
-            message = `💥 ${data.player} получил ZONK! Очки раунда потеряны.`;
-            break;
-        case 'hotDice':
-            message = `🎉 ${data.player} получил Hot Dice! Бросает снова все 6 костей.`;
-            break;
-        case 'takePoints':
-            message = `💰 ${data.player} взял ${data.score} очков.`;
-            break;
-        case 'win':
-            message = `🏆 ${data.player} побеждает с ${data.score} очками!`;
-            break;
-    }
-    
-    if (message) {
-        addChatMessage('system', message);
-    }
-}
-
-function updateMyDice(dice, selected) {
-    const container = document.getElementById('diceContainer');
-    container.innerHTML = '';
-    
-    dice.forEach((value, index) => {
-        const diceElement = document.createElement('div');
-        diceElement.className = `dice ${selected[index] ? 'selected' : ''}`;
-        diceElement.innerHTML = `<span class="dice-value">${value}</span>`;
-        
-        if (isMyTurn && !selected[index]) {
-            diceElement.style.cursor = 'pointer';
-            diceElement.onclick = () => toggleDice(index);
-        } else {
-            diceElement.style.cursor = 'default';
-        }
-        
-        container.appendChild(diceElement);
-    });
-}
-
-function updateObserverDice(dice, selected) {
-    const container = document.getElementById('observerDice');
-    container.innerHTML = '';
-    
-    dice.forEach((value, index) => {
-        const diceElement = document.createElement('div');
-        diceElement.className = `dice ${selected[index] ? 'selected' : ''}`;
-        diceElement.innerHTML = `<span class="dice-value">${value}</span>`;
-        diceElement.style.cursor = 'default';
-        container.appendChild(diceElement);
-    });
-}
-
-// Обработчики клавиш
-document.getElementById('chatInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        sendMessage();
-    }
-});
-
-// Периодическая проверка подключения
-setInterval(() => {
-    if (!socket.connected) {
-        document.getElementById('debugStatus').textContent = 'Reconnecting...';
-    }
-}, 5000);
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Set room ID for the game.js script
+        window.ROOM_ID = "<%= roomId %>";
+    </script>
+    <script src="/js/game.js"></script>
+</body>
+</html>
