@@ -30,13 +30,11 @@ function debugLog(message, data = null) {
     console.log(`[${timestamp}] ${message}`, data || '');
 }
 
-// Helper function to roll dice
-function rollDice(num) {
-    const dice = [];
-    for (let i = 0; i < num; i++) {
-        dice.push(Math.floor(Math.random() * 6) + 1);
-    }
-    return dice;
+// Вспомогательная функция броска костей
+function rollDice(num = 6) {
+    const res = [];
+    for (let i = 0; i < num; i++) res.push(1 + Math.floor(Math.random() * 6));
+    return res;
 }
 
 // Socket.io
@@ -48,7 +46,7 @@ io.on('connection', (socket) => {
     });
 
     // Создание игры
-    socket.on('createGame', (username) => {
+    socket.on('createGame', (username = 'Игрок') => {
         debugLog('🎮 CREATE GAME REQUEST', { 
             username, 
             socketId: socket.id 
@@ -69,11 +67,18 @@ io.on('connection', (socket) => {
             }],
             currentPlayerIndex: 0,
             status: 'waiting',
-            winner: null
+            winner: null,
+            cleanupTimer: null // таймер очистки пустой комнаты
         };
         
         games.set(roomId, game);
         socket.join(roomId);
+
+        // отменяем таймер удаления, если был
+        if (game.cleanupTimer) {
+            clearTimeout(game.cleanupTimer);
+            game.cleanupTimer = null;
+        }
         
         debugLog('📤 SENDING GAME CREATED', { 
             roomId, 
@@ -92,66 +97,50 @@ io.on('connection', (socket) => {
     });
 
     // Подключение к комнате
-    socket.on('joinRoom', ({ roomId, username } = {}) => {
+    socket.on('joinRoom', (roomId, username = 'Игрок') => {
         debugLog('🚪 JOIN ROOM REQUEST', { 
             roomId, 
-            username,
-            socketId: socket.id 
+            socketId: socket.id,
+            username
         });
 
         const game = games.get(roomId);
         
-        if (game) {
-            // Check if player is not already in the game
-            const existingPlayer = game.players.find(p => p.id === socket.id);
-            
-            if (!existingPlayer) {
-                // Add new player to the game
-                const playerNumber = game.players.length + 1;
-                const newPlayer = {
-                    id: socket.id,
-                    username: username || `Игрок ${playerNumber}`,
-                    score: 0,
-                    roundScore: 0,
-                    dice: [1, 1, 1, 1, 1, 1],
-                    selected: [false, false, false, false, false, false],
-                    diceToRoll: 6,
-                    firstRoll: true
-                };
-                
-                game.players.push(newPlayer);
-                
-                debugLog('👤 PLAYER ADDED', { 
-                    roomId, 
-                    username: newPlayer.username,
-                    playerCount: game.players.length
-                });
-            }
-            
-            socket.join(roomId);
-            debugLog('✅ ROOM JOINED', { 
-                roomId, 
-                players: game.players.length 
-            });
-
-            // Notify room that a player joined
-            io.to(roomId).emit('playerJoined', {
-                player: game.players.find(p => p.id === socket.id)
-            });
-
-            debugLog('📤 SENDING GAME STATE', { 
-                roomId,
-                to: socket.id,
-                gameState: game
-            });
-
-            io.to(roomId).emit('gameState', game);
-            debugLog('✅ GAME STATE SENT');
-            
-        } else {
+        if (!game) {
             debugLog('❌ ROOM NOT FOUND', roomId);
             socket.emit('error', 'Комната не найдена: ' + roomId);
+            return;
         }
+
+        // Если для этой комнаты запланирована очистка — отменяем её
+        if (game.cleanupTimer) {
+            clearTimeout(game.cleanupTimer);
+            game.cleanupTimer = null;
+            debugLog('🛟 CLEANUP CANCELLED (player rejoining)', { roomId });
+        }
+
+        // Не добавляем игрока дважды
+        let existing = game.players.find(p => p.id === socket.id);
+        if (!existing) {
+            const newPlayer = {
+                id: socket.id,
+                username: username || `Игрок ${game.players.length + 1}`,
+                score: 0,
+                roundScore: 0,
+                dice: [1,1,1,1,1,1],
+                selected: [false,false,false,false,false,false],
+                diceToRoll: 6,
+                firstRoll: true
+            };
+            game.players.push(newPlayer);
+            debugLog('➕ PLAYER ADDED', { roomId, player: newPlayer.username });
+        } else {
+            debugLog('ℹ️ PLAYER ALREADY IN GAME', { roomId, socketId: socket.id });
+        }
+        
+        socket.join(roomId);
+        io.to(roomId).emit('playerJoined', { id: socket.id, username: existing ? existing.username : username });
+        io.to(roomId).emit('gameState', game);
     });
 
     // Начало игры
@@ -172,78 +161,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Roll dice
-    socket.on('roll', ({ roomId } = {}, cb) => {
-        debugLog('🎲 ROLL REQUEST', { roomId, socketId: socket.id });
-        
-        const game = games.get(roomId);
-        
-        if (!game) {
-            debugLog('❌ ROOM NOT FOUND', roomId);
-            if (cb) cb({ error: 'Room not found' });
-            return;
-        }
-        
-        // Validate currentPlayerIndex is within bounds
-        if (game.currentPlayerIndex < 0 || game.currentPlayerIndex >= game.players.length) {
-            game.currentPlayerIndex = 0;
-        }
-        
-        const currentPlayer = game.players[game.currentPlayerIndex];
-        
-        if (!currentPlayer) {
-            debugLog('❌ NO CURRENT PLAYER', { roomId });
-            if (cb) cb({ error: 'No current player' });
-            return;
-        }
-        
-        // Validate that the caller is the current player
-        if (currentPlayer.id !== socket.id) {
-            debugLog('❌ NOT CURRENT PLAYER', { 
-                socketId: socket.id, 
-                currentPlayerId: currentPlayer.id 
-            });
-            if (cb) cb({ error: 'Not your turn' });
-            return;
-        }
-        
-        // Roll the dice
-        const numDice = currentPlayer.diceToRoll ?? 6;
-        const rolledDice = rollDice(numDice);
-        
-        // Update player's dice
-        currentPlayer.dice = rolledDice;
-        currentPlayer.firstRoll = false;
-        
-        debugLog('🎲 DICE ROLLED', { 
-            roomId,
-            player: currentPlayer.username,
-            dice: rolledDice
-        });
-        
-        // TODO: Implement scoring logic here
-        // - Check if roll is a zonk (no scoring dice)
-        // - Calculate available score from rolled dice
-        // - Update game state accordingly
-        
-        // TODO: Implement dice selection logic
-        // - Allow player to select scoring dice
-        // - Validate selections
-        // - Update roundScore
-        
-        // Emit events
-        io.to(roomId).emit('rolled', {
-            player: currentPlayer.username,
-            dice: rolledDice
-        });
-        io.to(roomId).emit('gameState', game);
-        
-        // Send callback response
-        if (cb) cb({ dice: rolledDice });
-        
-        debugLog('✅ ROLL COMPLETE', { roomId });
-    });
-
     // Чат
     socket.on('chatMessage', (data) => {
         const { roomId, message } = data;
@@ -252,7 +169,7 @@ io.on('connection', (socket) => {
         const game = games.get(roomId);
         const player = game?.players.find(p => p.id === socket.id);
         
-        if (game && player && message.trim()) {
+        if (game && player && message && message.trim()) {
             debugLog('📤 SENDING CHAT MESSAGE', { 
                 roomId, 
                 player: player.username,
@@ -263,7 +180,47 @@ io.on('connection', (socket) => {
                 player: player.username,
                 message: message.trim()
             });
+        } else {
+            debugLog('ℹ️ CHAT IGNORED - no game or player or empty message', { roomId });
         }
+    });
+
+    // Обработчик броска (минимальная реализация)
+    socket.on('roll', ({ roomId }, cb) => {
+        const game = games.get(roomId);
+        if (!game) return cb?.({ ok: false, error: 'no_room' });
+        const current = game.players[game.currentPlayerIndex];
+        if (!current || current.id !== socket.id) return cb?.({ ok: false, error: 'not_your_turn' });
+
+        const diceCount = current.diceToRoll || 6;
+        const newDice = rollDice(diceCount);
+        current.dice = newDice;
+        current.firstRoll = false;
+
+        // TODO: вычислять очки и обновлять roundScore/selected/diceToRoll согласно правилам Zonk
+        // Например: current.roundScore += computeScoreFromRoll(newDice);
+
+        io.to(roomId).emit('rolled', { playerId: current.id, dice: newDice });
+        io.to(roomId).emit('gameState', game);
+        cb?.({ ok: true, dice: newDice });
+    });
+
+    // Переключение кости, взятие очков и др. должны иметь защиту от отсутствия game/player
+    socket.on('toggleDice', (data) => {
+        const { roomId, index } = data || {};
+        const game = games.get(roomId);
+        if (!game) return;
+        const player = game.players.find(p => p.id === socket.id);
+        if (!player) return;
+        // TODO: реализовать toggle логики выбора костей
+    });
+
+    socket.on('takePoints', ({ roomId }) => {
+        const game = games.get(roomId);
+        if (!game) return;
+        const player = game.players.find(p => p.id === socket.id);
+        if (!player) return;
+        // TODO: реализовать добавление roundScore в score, переключение хода и т.д.
     });
 
     // Отсоединение
@@ -272,46 +229,30 @@ io.on('connection', (socket) => {
             socketId: socket.id, 
             reason: reason 
         });
-        
-        // Remove player from all games
+
+        // Найти во всех играх и удалить
         for (const [roomId, game] of games.entries()) {
-            const playerIndex = game.players.findIndex(p => p.id === socket.id);
-            
-            if (playerIndex !== -1) {
-                const removedPlayer = game.players[playerIndex];
-                game.players.splice(playerIndex, 1);
-                
-                debugLog('👤 PLAYER REMOVED', {
-                    roomId,
-                    username: removedPlayer.username,
-                    remainingPlayers: game.players.length
-                });
-                
-                // If game is empty, delete it
-                if (game.players.length === 0) {
-                    games.delete(roomId);
-                    debugLog('🗑️ GAME DELETED', { roomId });
-                } else {
-                    // Adjust currentPlayerIndex if needed
-                    // If removed player was before current player, decrement index
-                    if (playerIndex < game.currentPlayerIndex) {
-                        game.currentPlayerIndex--;
-                    }
-                    // If removed player was the current player or index is now out of bounds, reset to 0
-                    else if (playerIndex === game.currentPlayerIndex || game.currentPlayerIndex >= game.players.length) {
+            const idx = game.players.findIndex(p => p.id === socket.id);
+            if (idx !== -1) {
+                const removed = game.players.splice(idx, 1)[0];
+                debugLog('👤 PLAYER REMOVED', { roomId, username: removed.username, remainingPlayers: game.players.length });
+
+                // Если остались игроки — оповестить
+                if (game.players.length > 0) {
+                    if (game.currentPlayerIndex >= game.players.length) {
                         game.currentPlayerIndex = 0;
                     }
-                    
-                    // Notify remaining players
-                    io.to(roomId).emit('playerLeft', {
-                        player: removedPlayer
-                    });
+                    io.to(roomId).emit('playerLeft', { id: socket.id, username: removed.username });
                     io.to(roomId).emit('gameState', game);
-                    
-                    debugLog('📤 SENT playerLeft AND gameState', { roomId });
+                } else {
+                    // Если игроков не осталось — запускаем таймер удаления вместо немедленного удаления
+                    if (game.cleanupTimer) clearTimeout(game.cleanupTimer);
+                    game.cleanupTimer = setTimeout(() => {
+                        games.delete(roomId);
+                        debugLog('🗑️ GAME DELETED (cleanup timer elapsed)', { roomId });
+                    }, 30 * 1000); // 30 секунд grace period
+                    debugLog('⏳ GAME WILL BE CLEANED UP IN 30s IF NOBODY RETURNS', { roomId });
                 }
-                
-                break; // Player can only be in one game
             }
         }
     });
@@ -323,11 +264,6 @@ io.on('connection', (socket) => {
             error: error 
         });
     });
-});
-
-// Добавим обработчики для всех событий для отладки
-io.engine.on("connection", (socket) => {
-    debugLog('🚀 ENGINE CONNECTION', { socketId: socket.id });
 });
 
 // Маршруты
