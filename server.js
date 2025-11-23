@@ -147,27 +147,60 @@ io.on('connection', (socket) => {
     socket.on('startGame', (roomId) => {
         debugLog('🎯 START GAME REQUEST', { roomId, socketId: socket.id });
         
-        const game = games.get(roomId);
-        if (game && game.players.length >= 2 && game.players[0].id === socket.id) {
-            game.status = 'playing';
-            
-            debugLog('🚀 GAME STARTED', { 
-                roomId, 
-                players: game.players.map(p => p.username) 
-            });
-
-            io.to(roomId).emit('gameStarted');
-            io.to(roomId).emit('gameState', game);
+        if (!roomId) {
+            debugLog('❌ NO ROOM ID PROVIDED');
+            return;
         }
+        
+        const game = games.get(roomId);
+        
+        if (!game) {
+            debugLog('❌ ROOM NOT FOUND', roomId);
+            socket.emit('error', 'Комната не найдена');
+            return;
+        }
+        
+        if (game.players.length < 2) {
+            debugLog('❌ NOT ENOUGH PLAYERS', { 
+                roomId, 
+                playerCount: game.players.length 
+            });
+            socket.emit('error', 'Минимум 2 игрока для начала игры');
+            return;
+        }
+        
+        if (game.players[0].id !== socket.id) {
+            debugLog('❌ ONLY CREATOR CAN START', { 
+                roomId,
+                creatorId: game.players[0].id,
+                requesterId: socket.id
+            });
+            socket.emit('error', 'Только создатель может начать игру');
+            return;
+        }
+        
+        game.status = 'playing';
+        
+        debugLog('🚀 GAME STARTED', { 
+            roomId, 
+            players: game.players.map(p => p.username) 
+        });
+
+        io.to(roomId).emit('gameStarted');
+        io.to(roomId).emit('gameState', game);
     });
 
     // Чат
     socket.on('chatMessage', (data) => {
+        if (!data || !data.roomId) {
+            debugLog('❌ INVALID CHAT MESSAGE DATA', data);
+            return;
+        }
+        
         const { roomId, message } = data;
         debugLog('💬 CHAT MESSAGE', { roomId, message, socketId: socket.id });
         
         const game = games.get(roomId);
-        const player = game?.players.find(p => p.id === socket.id);
         
         if (game && player && message && message.trim()) {
             debugLog('📤 SENDING CHAT MESSAGE', { 
