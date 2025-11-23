@@ -3,88 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Игра Zonk</title>
+    <title>ZONK Pro - Игра в кости</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div class="container">
-        <h1>🎲 ZONK - Настоящие правила! 🎲</h1>
-        
-        <% if (game.gameOver) { %>
-            <div class="win-message">
-                🏆 ПОБЕДА! 🏆<br>
-                Ты набрал <%= game.totalScore %> очков!
-            </div>
-        <% } %>
-        
-        <div class="score-board">
-            <div class="total-score">Общий счет: <%= game.totalScore %></div>
-            <div class="round-score">Очки за раунд: <%= currentScore %></div>
-            <div class="rolls-left">Бросков осталось: <%= game.rollsLeft %></div>
-            <% if (game.zonkCount > 0) { %>
-                <div class="zonk-count">ZONK'ов подряд: <%= game.zonkCount %></div>
-            <% } %>
+        <!-- Левая панель - Игроки -->
+        <div class="players-panel">
+            <h2>🎮 Игроки</h2>
+            <ul class="player-list">
+                <li class="player-item">
+                    <span class="player-name">Роман Р.</span>
+                    <span class="player-score"><%= game.totalScore || 0 %></span>
+                </li>
+                <li class="player-item">
+                    <span class="player-name">Противник</span>
+                    <span class="player-score">–</span>
+                </li>
+                <li class="player-item">
+                    <span class="player-name">Игрок 3</span>
+                    <span class="player-score">–</span>
+                </li>
+                <li class="player-item">
+                    <span class="player-name">Игрок 4</span>
+                    <span class="player-score">–</span>
+                </li>
+            </ul>
         </div>
 
-        <div class="dice-container">
-            <% game.dice.forEach((die, index) => { %>
-                <div class="dice <%= game.selected[index] ? 'selected' : '' %>" 
-                     onclick="toggleDice(<%= index %>)">
-                    <span class="dice-value"><%= die %></span>
+        <!-- Центральная игровая область -->
+        <div class="game-area">
+            <div class="game-title">
+                <h1>🎲 ZONK PRO</h1>
+                <div class="subtitle">Собирайте кубики с комбинациями!</div>
+            </div>
+
+            <% if (game.gameOver) { %>
+                <div class="win-message">
+                    🏆 ПОБЕДА! 🏆<br>
+                    Ты набрал <%= game.totalScore %> очков!
                 </div>
-            <% }); %>
-        </div>
-
-        <div class="game-info">
-            <% if (!game.hasMinimumPoints && game.totalScore === 0) { %>
-                <div class="info-message">⚠️ Нужно набрать минимум 300 очков для первого взятия!</div>
             <% } %>
-            <% if (allDiceUsed) { %>
-                <div class="info-message">🎉 Hot Dice! Все кости дают очки - бросай снова!</div>
-            <% } %>
-        </div>
 
-        <div class="controls">
-            <form action="/roll" method="POST">
-                <button type="submit" <%= game.rollsLeft === 0 || game.gameOver ? 'disabled' : '' %>>
-                    🎲 Бросить кости (<%= game.rollsLeft %>)
-                </button>
-            </form>
-
-            <form action="/take" method="POST">
-                <button type="submit" class="take-btn" 
-                        <%= !canTake || game.gameOver ? 'disabled' : '' %>>
-                    💰 Забрать очки (<%= currentScore %>)
-                </button>
-            </form>
-
-            <form action="/reset" method="POST">
-                <button type="submit" class="reset-btn">🔄 Новая игра</button>
-            </form>
-        </div>
-
-        <% if (zonk && game.rollsLeft < 3) { %>
-            <div class="zonk-message">
-                💥 ZONK! Нет очков в этом раунде!<br>
-                <% if (game.zonkCount >= 2) { %>
-                    ⚠️ Следующий ZONK отнимет 500 очков!
-                <% } %>
+            <div class="score-board">
+                <div class="score-item">
+                    <div class="score-label">Общий счет</div>
+                    <div class="score-value"><%= game.totalScore || 0 %></div>
+                </div>
+                <div class="score-item">
+                    <div class="score-label">Очки раунда</div>
+                    <div class="score-value"><%= currentScore || 0 %></div>
+                </div>
+                <div class="score-item">
+                    <div class="score-label">Бросков</div>
+                    <div class="score-value"><%= game.rollsLeft || 3 %></div>
+                </div>
             </div>
-        <% } %>
 
-        <div class="combinations">
-            <h3>🎯 Комбинации:</h3>
-            <div class="combo-list">
-                <span>1 = 100</span>
-                <span>5 = 50</span>
-                <span>3×1 = 1000</span>
-                <span>3×2 = 200</span>
-                <span>3×3 = 300</span>
-                <span>3×4 = 400</span>
-                <span>3×5 = 500</span>
-                <span>3×6 = 600</span>
-                <span>3 пары = 750</span>
-                <span>Прямая = 1500</span>
+            <div class="dice-container">
+                <% game.dice.forEach((die, index) => { %>
+                    <div class="dice <%= game.selected && game.selected[index] ? 'selected' : '' %>" 
+                         onclick="toggleDice(<%= index %>)">
+                        <span class="dice-value"><%= die %></span>
+                    </div>
+                <% }); %>
+            </div>
+
+            <% if (zonk && game.rollsLeft < 3) { %>
+                <div class="message zonk-message">
+                    💥 ZONK! Нет очков в этом раунде!
+                </div>
+            <% } %>
+
+            <% if (allDiceUsed) { %>
+                <div class="message" style="background: linear-gradient(135deg, #74b9ff, #0984e3); color: white;">
+                    🎉 Hot Dice! Все кости дают очки - бросай снова!
+                </div>
+            <% } %>
+
+            <div class="controls">
+                <form action="/roll" method="POST">
+                    <button type="submit" class="btn btn-primary" 
+                            <%= game.rollsLeft === 0 || game.gameOver ? 'disabled' : '' %>>
+                        🎲 Бросить (<%= game.rollsLeft %>)
+                    </button>
+                </form>
+
+                <form action="/take" method="POST">
+                    <button type="submit" class="btn btn-success" 
+                            <%= !canTake || game.gameOver ? 'disabled' : '' %>>
+                        💰 Сохранить (<%= currentScore || 0 %>)
+                    </button>
+                </form>
+
+                <form action="/reset" method="POST">
+                    <button type="submit" class="btn btn-danger">
+                        🔄 Новая игра
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Правая панель - Комбинации -->
+        <div class="combinations-panel">
+            <h2>🎯 Комбинации</h2>
+            
+            <div class="combo-grid">
+                <div class="combo-item">
+                    <div class="combo-value">100</div>
+                    <div class="combo-desc">За каждую 1</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">50</div>
+                    <div class="combo-desc">За каждую 5</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">1000</div>
+                    <div class="combo-desc">3 единицы</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">200</div>
+                    <div class="combo-desc">3 двойки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">300</div>
+                    <div class="combo-desc">3 тройки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">400</div>
+                    <div class="combo-desc">3 четверки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">500</div>
+                    <div class="combo-desc">3 пятерки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">600</div>
+                    <div class="combo-desc">3 шестерки</div>
+                </div>
+            </div>
+
+            <div class="special-features">
+                <div class="feature-item">
+                    <div class="feature-title">🎭 Бросок с джокером</div>
+                    <div class="feature-desc">Поможет собрать хорошую комбинацию</div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-title">⚡ Дополнительный бросок</div>
+                    <div class="feature-desc">Бросить еще шесть кубиков за один ход</div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-title">🛡️ Защита от ZONK</div>
+                    <div class="feature-desc">Отмена хода при получении ZONK</div>
+                </div>
             </div>
         </div>
     </div>
@@ -94,6 +165,31 @@
             fetch('/toggle/' + index, { method: 'POST' })
                 .then(() => window.location.reload());
         }
+
+        // Добавляем анимацию броска
+        document.addEventListener('DOMContentLoaded', function() {
+            const dice = document.querySelectorAll('.dice');
+            dice.forEach(die => {
+                die.style.animation = 'diceAppear 0.5s ease-out';
+            });
+        });
     </script>
+
+    <style>
+        @keyframes diceAppear {
+            0% { 
+                transform: scale(0) rotate(-180deg);
+                opacity: 0;
+            }
+            100% { 
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        .dice {
+            animation: diceAppear 0.5s ease-out;
+        }
+    </style>
 </body>
 </html>
