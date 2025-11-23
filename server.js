@@ -23,7 +23,6 @@ app.use(express.json());
 
 // Хранилище игр
 const games = new Map();
-const players = new Map();
 
 // Отладочная информация
 function debugLog(message, data = null) {
@@ -61,6 +60,7 @@ class ZonkGame {
         };
         
         this.players.push(player);
+        debugLog('Игрок добавлен', { username: player.username, roomId: this.roomId });
         return true;
     }
 
@@ -72,59 +72,11 @@ class ZonkGame {
         if (this.players.length === 0) return;
         this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
     }
-
-    calculateScore(dice, selected) {
-        if (selected.every(s => !s)) return 0;
-        
-        let score = 0;
-        const counts = [0, 0, 0, 0, 0, 0, 0];
-        
-        for (let i = 0; i < 6; i++) {
-            if (selected[i]) {
-                counts[dice[i]]++;
-            }
-        }
-
-        // 1 и 5 дают очки
-        score += counts[1] * 100;
-        score += counts[5] * 50;
-
-        // Комбинации
-        for (let i = 1; i <= 6; i++) {
-            if (counts[i] >= 3) {
-                score += i === 1 ? 1000 : i * 100;
-            }
-        }
-
-        return score;
-    }
-
-    isZonk(dice) {
-        const counts = [0, 0, 0, 0, 0, 0, 0];
-        dice.forEach(die => counts[die]++);
-
-        if (counts[1] >= 1) return false;
-        if (counts[5] >= 1) return false;
-        
-        for (let i = 1; i <= 6; i++) {
-            if (counts[i] >= 3) return false;
-        }
-
-        return true;
-    }
-
-    canTakePoints(player) {
-        const currentScore = this.calculateScore(player.dice, player.selected);
-        if (player.score === 0) {
-            return currentScore >= 300;
-        }
-        return currentScore > 0;
-    }
 }
 
 // Socket.io обработчики
 io.on('connection', (socket) => {
-    debugLog('Пользователь подключен', socket.id);
+    debugLog('✅ Пользователь подключен', socket.id);
 
     // Создание игры
     socket.on('createGame', (username) => {
@@ -134,16 +86,25 @@ io.on('connection', (socket) => {
             
             game.addPlayer(socket.id, username);
             games.set(roomId, game);
-            players.set(socket.id, roomId);
             
             socket.join(roomId);
-            debugLog(`Создана комната`, { roomId, username });
+            debugLog(`🎮 Создана комната`, { roomId, username, socketId: socket.id });
+            
+            // Отправляем состояние обратно
+            const gameState = {
+                roomId: game.roomId,
+                players: game.players,
+                currentPlayerIndex: game.currentPlayerIndex,
+                status: game.status,
+                winner: game.winner
+            };
             
             socket.emit('gameCreated', roomId);
-            io.to(roomId).emit('gameState', getGameState(game));
+            socket.emit('gameState', gameState);
+            debugLog('📤 Отправлено состояние игры создателю', gameState);
             
         } catch (error) {
-            debugLog('Ошибка создания игры', error);
+            debugLog('❌ Ошибка создания игры', error);
             socket.emit('error', 'Ошибка создания игры');
         }
     });
@@ -152,192 +113,153 @@ io.on('connection', (socket) => {
     socket.on('joinGame', (data) => {
         try {
             const { roomId, username } = data;
-            debugLog('Попытка присоединения', { roomId, username });
+            debugLog('👤 Попытка присоединения', { roomId, username, socketId: socket.id });
             
             const game = games.get(roomId);
             
             if (!game) {
+                debugLog('❌ Комната не найдена', roomId);
                 socket.emit('error', 'Комната не найдена');
                 return;
             }
             
             if (game.status !== 'waiting') {
+                debugLog('❌ Игра уже началась', { roomId, status: game.status });
                 socket.emit('error', 'Игра уже началась');
                 return;
             }
             
             if (game.addPlayer(socket.id, username)) {
-                players.set(socket.id, roomId);
                 socket.join(roomId);
-                debugLog('Игрок присоединился', { roomId, username });
+                debugLog('✅ Игрок присоединился', { roomId, username, socketId: socket.id });
+                
+                // Отправляем состояние всем в комнате
+                const gameState = {
+                    roomId: game.roomId,
+                    players: game.players,
+                    currentPlayerIndex: game.currentPlayerIndex,
+                    status: game.status,
+                    winner: game.winner
+                };
                 
                 socket.emit('gameJoined', roomId);
                 io.to(roomId).emit('playerJoined', { username });
-                io.to(roomId).emit('gameState', getGameState(game));
+                io.to(roomId).emit('gameState', gameState);
+                debugLog('📤 Отправлено состояние игры всем игрокам', gameState);
                 
             } else {
+                debugLog('❌ Комната заполнена', { roomId, currentPlayers: game.players.length });
                 socket.emit('error', 'Комната заполнена');
             }
         } catch (error) {
-            debugLog('Ошибка присоединения', error);
+            debugLog('❌ Ошибка присоединения', error);
             socket.emit('error', 'Ошибка присоединения к игре');
         }
     });
 
-    // Подключение к комнате (ВАЖНО!)
+    // ПОДКЛЮЧЕНИЕ К КОМНАТЕ - ВАЖНО!
     socket.on('joinRoom', (roomId) => {
         try {
-            debugLog('Подключение к комнате', { roomId, socketId: socket.id });
+            debugLog('🚪 Подключение к комнате', { roomId, socketId: socket.id });
             const game = games.get(roomId);
+            
             if (game) {
                 socket.join(roomId);
-                debugLog('Успешное подключение к комнате', { 
+                debugLog('✅ Успешное подключение к комнате', { 
                     roomId, 
-                    players: game.players.length
+                    players: game.players.length,
+                    playerUsernames: game.players.map(p => p.username)
                 });
-                io.to(roomId).emit('gameState', getGameState(game));
+                
+                // НЕМЕДЛЕННО отправляем состояние игры
+                const gameState = {
+                    roomId: game.roomId,
+                    players: game.players,
+                    currentPlayerIndex: game.currentPlayerIndex,
+                    status: game.status,
+                    winner: game.winner
+                };
+                
+                socket.emit('gameState', gameState);
+                debugLog('📤 Отправлено состояние игры при подключении', gameState);
+                
+            } else {
+                debugLog('❌ Комната не найдена при joinRoom', roomId);
+                socket.emit('error', 'Комната не найдена');
             }
         } catch (error) {
-            debugLog('Ошибка подключения к комнате', error);
+            debugLog('❌ Ошибка подключения к комнате', error);
+            socket.emit('error', 'Ошибка подключения к комнате');
         }
     });
 
     // Начало игры
     socket.on('startGame', (roomId) => {
         try {
-            debugLog('Запрос на начало игры', { roomId });
+            debugLog('🎯 Запрос на начало игры', { roomId, socketId: socket.id });
             const game = games.get(roomId);
             
             if (game && game.players.length >= 2 && game.players[0].id === socket.id) {
                 game.status = 'playing';
-                debugLog('Игра началась', { roomId });
+                debugLog('🚀 Игра началась', { 
+                    roomId, 
+                    players: game.players.map(p => p.username)
+                });
+                
+                const gameState = {
+                    roomId: game.roomId,
+                    players: game.players,
+                    currentPlayerIndex: game.currentPlayerIndex,
+                    status: game.status,
+                    winner: game.winner
+                };
                 
                 io.to(roomId).emit('gameStarted');
-                io.to(roomId).emit('gameState', getGameState(game));
+                io.to(roomId).emit('gameState', gameState);
+                debugLog('📤 Отправлено состояние начатой игры', gameState);
+                
+            } else {
+                debugLog('❌ Нельзя начать игру', { 
+                    gameExists: !!game,
+                    players: game?.players.length,
+                    isCreator: game?.players[0]?.id === socket.id
+                });
             }
         } catch (error) {
-            debugLog('Ошибка начала игры', error);
+            debugLog('❌ Ошибка начала игры', error);
         }
     });
 
-    // Бросок костей
-    socket.on('rollDice', (roomId) => {
-        try {
-            const game = games.get(roomId);
-            const player = game?.getCurrentPlayer();
-            
-            if (game && player && player.id === socket.id && game.status === 'playing') {
-                const diceToRoll = player.firstRoll ? 6 : player.diceToRoll;
-                
-                // Бросаем кости
-                for (let i = 0; i < 6; i++) {
-                    if (!player.selected[i]) {
-                        player.dice[i] = Math.floor(Math.random() * 6) + 1;
-                    }
-                }
-                
-                player.firstRoll = false;
-                player.roundScore = game.calculateScore(player.dice, player.selected);
-                
-                if (game.isZonk(player.dice)) {
-                    player.roundScore = 0;
-                    game.nextPlayer();
-                }
-                
-                io.to(roomId).emit('gameState', getGameState(game));
-            }
-        } catch (error) {
-            debugLog('Ошибка броска костей', error);
-        }
-    });
-
-    // Выбор кости
-    socket.on('toggleDice', (data) => {
-        try {
-            const { roomId, index } = data;
-            const game = games.get(roomId);
-            const player = game?.getCurrentPlayer();
-            
-            if (game && player && player.id === socket.id && game.status === 'playing') {
-                player.selected[index] = !player.selected[index];
-                player.roundScore = game.calculateScore(player.dice, player.selected);
-                
-                const selectedCount = player.selected.filter(s => s).length;
-                player.diceToRoll = 6 - selectedCount;
-                
-                io.to(roomId).emit('gameState', getGameState(game));
-            }
-        } catch (error) {
-            debugLog('Ошибка переключения кости', error);
-        }
-    });
-
-    // Взять очки
-    socket.on('takePoints', (roomId) => {
-        try {
-            const game = games.get(roomId);
-            const player = game?.getCurrentPlayer();
-            
-            if (game && player && player.id === socket.id && game.status === 'playing') {
-                if (game.canTakePoints(player)) {
-                    player.score += player.roundScore;
-                    
-                    if (player.score >= 1000) {
-                        game.status = 'finished';
-                        game.winner = player.username;
-                    } else {
-                        game.nextPlayer();
-                    }
-                    
-                    // Сбрасываем раунд
-                    player.dice = [1, 1, 1, 1, 1, 1];
-                    player.selected = [false, false, false, false, false, false];
-                    player.diceToRoll = 6;
-                    player.firstRoll = true;
-                    player.roundScore = 0;
-                }
-                
-                io.to(roomId).emit('gameState', getGameState(game));
-            }
-        } catch (error) {
-            debugLog('Ошибка взятия очков', error);
-        }
-    });
-
-    // Сообщения в чат
+    // Чат
     socket.on('chatMessage', (data) => {
         try {
             const { roomId, message } = data;
+            debugLog('💬 Сообщение в чат', { roomId, message, socketId: socket.id });
+            
             const game = games.get(roomId);
             const player = game?.players.find(p => p.id === socket.id);
             
             if (game && player && message.trim()) {
+                debugLog('📤 Отправка сообщения в чат', { 
+                    player: player.username, 
+                    message: message.trim()
+                });
+                
                 io.to(roomId).emit('chatMessage', {
                     player: player.username,
                     message: message.trim()
                 });
             }
         } catch (error) {
-            debugLog('Ошибка отправки сообщения', error);
+            debugLog('❌ Ошибка отправки сообщения', error);
         }
     });
 
     // Отсоединение
     socket.on('disconnect', () => {
-        debugLog('Пользователь отключен', socket.id);
+        debugLog('🔌 Пользователь отключен', socket.id);
     });
 });
-
-// Вспомогательная функция
-function getGameState(game) {
-    return {
-        roomId: game.roomId,
-        players: game.players,
-        currentPlayerIndex: game.currentPlayerIndex,
-        status: game.status,
-        winner: game.winner
-    };
-}
 
 // Маршруты
 app.get('/', (req, res) => {
@@ -346,6 +268,10 @@ app.get('/', (req, res) => {
 
 app.get('/game/:roomId?', (req, res) => {
     res.render('game', { roomId: req.params.roomId || '' });
+});
+
+app.get('/create', (req, res) => {
+    res.render('create');
 });
 
 // Health check для Railway
@@ -357,7 +283,26 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Debug endpoint
+app.get('/api/debug', (req, res) => {
+    const debugInfo = {
+        totalGames: games.size,
+        games: Array.from(games.entries()).map(([roomId, game]) => ({
+            roomId,
+            status: game.status,
+            players: game.players.map(p => ({
+                username: p.username,
+                id: p.id.substring(0, 8) + '...'
+            }))
+        }))
+    };
+    res.json(debugInfo);
+});
+
 // Запуск сервера
 server.listen(PORT, () => {
     console.log(`🎲 Zonk Multiplayer запущен на порту ${PORT}`);
+    console.log(`📍 http://localhost:${PORT}`);
+    console.log(`🔧 Debug: http://localhost:${PORT}/api/debug`);
+    console.log(`❤️ Health: http://localhost:${PORT}/health`);
 });
