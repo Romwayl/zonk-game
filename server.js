@@ -92,7 +92,7 @@ io.on('connection', (socket) => {
     });
 
     // Подключение к комнате
-    socket.on('joinRoom', ({ roomId, username }) => {
+    socket.on('joinRoom', ({ roomId, username } = {}) => {
         debugLog('🚪 JOIN ROOM REQUEST', { 
             roomId, 
             username,
@@ -173,7 +173,7 @@ io.on('connection', (socket) => {
     });
 
     // Roll dice
-    socket.on('roll', ({ roomId }, cb) => {
+    socket.on('roll', ({ roomId } = {}, cb) => {
         debugLog('🎲 ROLL REQUEST', { roomId, socketId: socket.id });
         
         const game = games.get(roomId);
