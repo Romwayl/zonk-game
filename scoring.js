@@ -1,41 +1,128 @@
-/**
- * Zonk Scoring Module
- * 
- * This module handles the scoring logic for the Zonk dice game.
- * 
- * Zonk Scoring Rules (to be implemented):
- * - Single 1: 100 points
- * - Single 5: 50 points
- * - Three of a kind (except 1s): 100 × face value (e.g., three 4s = 400)
- * - Three 1s: 1000 points
- * - Four or more of a kind: multiply three-of-a-kind score by 2 for each additional die
- * - Straight (1-2-3-4-5-6): 1500 points
- * - Three pairs: 1500 points
- * - Zonk: No scoring dice = 0 points, lose turn
- * 
- * TODO: Implement full scoring logic
- * TODO: Add unit tests for all scoring combinations
- * TODO: Validate selectedDice parameter (must be array of integers 1-6)
- */
+// public/js/game.js
+// Основной клиентский код. Ожидает window.ROOM_ID заданным шаблоном.
 
-/**
- * Compute the score for selected dice
- * @param {number[]} selectedDice - Array of dice values (1-6). Should be a non-empty array.
- *                                   Invalid input (non-array, empty array, or invalid dice values) 
- *                                   will be handled in the full implementation.
- * @returns {number} The score for the selected dice. Returns 0 in this stub implementation.
- * @example
- * computeScore([1, 1, 1]) // Should return 1000 (three 1s)
- * computeScore([5]) // Should return 50 (single 5)
- */
-function computeScore(selectedDice) {
-    // TODO: Implement Zonk scoring rules
-    // TODO: Add input validation (check for array, non-empty, valid values 1-6)
-    // This is a stub that returns 0
-    // Replace with actual scoring logic
-    return 0;
+const socket = io();
+const roomId = window.ROOM_ID || '';
+let myPlayerId = null;
+let isMyTurn = false;
+
+function debugLog(message, data = null) {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`[${timestamp}] 🎮 ${message}`, data || '');
+  updateDebugInfo(message);
 }
 
-module.exports = {
-    computeScore
-};
+function updateDebugInfo(message) {
+  const debugInfo = document.getElementById('debugInfo');
+  if (debugInfo) {
+    const line = document.createElement('div');
+    line.className = 'debug-line';
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+    debugInfo.appendChild(line);
+    debugInfo.scrollTop = debugInfo.scrollHeight;
+  }
+}
+
+debugLog('Инициализация игры', { roomId });
+
+socket.on('connect', () => {
+  debugLog('Подключен к серверу', { socketId: socket.id });
+  myPlayerId = socket.id;
+  const statusEl = document.getElementById('debugStatus');
+  if (statusEl) statusEl.textContent = 'Connected';
+  const socketIdEl = document.getElementById('debugSocketId');
+  if (socketIdEl) socketIdEl.textContent = socket.id;
+  const debugRoomEl = document.getElementById('debugRoom');
+  if (debugRoomEl) debugRoomEl.textContent = roomId;
+
+  if (roomId && roomId !== '') {
+    debugLog('Подключение к комнате', roomId);
+    socket.emit('joinRoom', roomId);
+  } else {
+    debugLog('Ошибка: нет ID комнаты');
+    // редиректать на главную можно, если нужно
+  }
+});
+
+socket.on('disconnect', () => {
+  debugLog('Отключен от сервера');
+  const statusEl = document.getElementById('debugStatus');
+  if (statusEl) statusEl.textContent = 'Disconnected';
+});
+
+socket.on('connect_error', (error) => {
+  debugLog('Ошибка подключения', error);
+  const statusEl = document.getElementById('debugStatus');
+  if (statusEl) statusEl.textContent = 'Error';
+});
+
+socket.on('gameState', (gameState) => {
+  debugLog('Получено состояние игры', { status: gameState.status, players: gameState.players.length, currentPlayer: gameState.players[gameState.currentPlayerIndex]?.username });
+  updateGameState(gameState);
+});
+
+socket.on('playerJoined', (player) => {
+  debugLog('Игрок присоединился', player);
+  addChatMessage('system', `Игрок ${player.username} присоединился к игре`);
+});
+
+socket.on('playerLeft', (player) => {
+  debugLog('Игрок вышел', player);
+  addChatMessage('system', `Игрок ${player.username} вышел из игры`);
+});
+
+socket.on('gameStarted', () => {
+  debugLog('Игра началась!');
+  addChatMessage('system', '🎮 Игра началась! Удачи!');
+});
+
+socket.on('rolled', (data) => {
+  debugLog('ROCLED', data);
+  // можно показывать анимацию броска/обновлять конкретного игрока
+});
+
+socket.on('chatMessage', (data) => {
+  debugLog('Сообщение в чате', data);
+  addChatMessage(data.player, data.message);
+});
+
+socket.on('error', (message) => {
+  debugLog('Ошибка от сервера', message);
+  alert('Ошибка: ' + message);
+});
+
+// UI обновления — функции, как у тебя были; добавь defensive checks (элементы могут отсутствовать)
+function updateGameState(gameState) {
+  // реализовано по примеру ранее: обновляет список игроков, состояние комнаты, контролы
+  // ... (вставь реализацию из своего кода, которую мы уже обсуждали)
+}
+
+// Примеры игровых действий
+function startGame() { socket.emit('startGame', roomId); }
+function rollDice() { socket.emit('roll', { roomId }, (res) => { debugLog('roll cb', res); }); }
+function toggleDice(index) { socket.emit('toggleDice', { roomId, index }); }
+function takePoints() { socket.emit('takePoints', { roomId }); }
+function sendMessage() {
+  const input = document.getElementById('chatInput');
+  if (!input) return;
+  const message = input.value.trim();
+  if (message) {
+    debugLog('Отправка сообщения', message);
+    socket.emit('chatMessage', { roomId, message });
+    input.value = '';
+  }
+}
+function addChatMessage(sender, message) {
+  const chat = document.getElementById('chatMessages');
+  if (!chat) return;
+  const messageElement = document.createElement('div');
+  if (sender === 'system') {
+    messageElement.className = 'chat-message system';
+    messageElement.textContent = message;
+  } else {
+    messageElement.className = 'chat-message';
+    messageElement.innerHTML = `${sender}: ${message}`;
+  }
+  chat.appendChild(messageElement);
+  chat.scrollTop = chat.scrollHeight;
+}
