@@ -1,58 +1,509 @@
-const socket = io();
-const roomId = '<%= roomId %>';
-let myPlayerId = null;
-let isMyTurn = false;
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZONK - Игра</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Левая панель - Игроки -->
+        <div class="players-panel">
+            <h2>🎮 Игроки <span id="playerCount">0/4</span></h2>
+            <div id="playersList" class="player-list">
+                <!-- Игроки будут добавляться через JavaScript -->
+            </div>
+            
+            <div id="waitingArea" class="waiting-area">
+                <h3>👥 Ожидание игроков...</h3>
+                <div class="room-info">
+                    <div style="font-size: 0.9em; color: var(--text-secondary);">Код комнаты:</div>
+                    <div id="roomCode" class="room-code">Загрузка...</div>
+                    <button onclick="copyRoomCode()" class="btn btn-primary" style="width: 100%; padding: 12px; margin: 10px 0;">
+                        📋 Скопировать приглашение
+                    </button>
+                </div>
+                <button id="startGameBtn" onclick="startGame()" class="btn btn-success" style="width: 100%; padding: 15px; display: none;">
+                    🚀 Начать игру (минимум 2 игрока)
+                </button>
+            </div>
 
-// Подключение к комнате
-if (roomId) {
-    socket.emit('joinRoom', roomId);
-} else {
-    window.location.href = '/';
-}
+            <div id="gameControls" style="display: none; margin-top: 20px;">
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;">
+                    <div style="font-size: 0.9em; color: var(--text-secondary);">Сейчас ходит:</div>
+                    <div id="currentPlayer" style="font-size: 1.2em; font-weight: bold; color: var(--accent); margin-top: 5px;"></div>
+                </div>
+            </div>
+        </div>
 
-socket.on('connect', () => {
-    console.log('Connected to server');
-    myPlayerId = socket.id;
-});
+        <!-- Центральная игровая область -->
+        <div class="game-area">
+            <div class="game-title">
+                <h1>🎲 ZONK MULTIPLAYER</h1>
+                <div id="gameStatus" class="subtitle">Подключение к игре...</div>
+            </div>
 
-socket.on('onlineCount', (count) => {
-    document.getElementById('onlineCount').textContent = count;
-});
+            <!-- Сообщение о победе -->
+            <div id="winnerMessage" class="win-message" style="display: none;">
+                <!-- Будет заполнено JavaScript -->
+            </div>
 
-socket.on('gameState', (gameState) => {
-    console.log('Game state updated:', gameState);
-    updateGameState(gameState);
-});
+            <!-- Область текущего игрока -->
+            <div id="currentPlayerArea" style="display: none; width: 100%;">
+                <div class="score-board">
+                    <div class="score-item">
+                        <div class="score-label">Мои очки</div>
+                        <div id="myScore" class="score-value">0</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Очки раунда</div>
+                        <div id="roundScore" class="score-value">0</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Кости для броска</div>
+                        <div id="diceToRoll" class="score-value">6</div>
+                    </div>
+                </div>
 
-socket.on('playerJoined', (player) => {
-    console.log('Player joined:', player);
-    addMessage('system', `Игрок ${player.username} присоединился`);
-});
+                <div id="diceContainer" class="dice-container" style="display: none;">
+                    <!-- Кости будут добавлены через JavaScript -->
+                </div>
 
-socket.on('playerLeft', (player) => {
-    console.log('Player left:', player);
-    addMessage('system', `Игрок ${player.username} вышел`);
-});
+                <div id="gameMessages">
+                    <!-- Сообщения игры будут здесь -->
+                </div>
 
-socket.on('chatMessage', (data) => {
-    console.log('Chat message:', data);
-    addMessage(data.player, data.message);
-});
+                <div id="playerControls" class="controls" style="display: none;">
+                    <button id="rollBtn" onclick="rollDice()" class="btn btn-primary">
+                        🎲 Бросить кости
+                    </button>
+                    <button id="takeBtn" onclick="takePoints()" class="btn btn-success">
+                        💰 Сохранить очки
+                    </button>
+                    <button onclick="leaveGame()" class="btn btn-danger">
+                        🚪 Выйти
+                    </button>
+                </div>
+            </div>
 
-socket.on('gameMessage', (data) => {
-    console.log('Game message:', data);
-    if (data.type === 'zonk') {
-        addMessage('system', `💥 ${data.player} получил ZONK!`);
-    } else if (data.type === 'hotDice') {
-        addMessage('system', `🎉 ${data.player} получил Hot Dice!`);
-    } else if (data.type === 'takePoints') {
-        addMessage('system', `💰 ${data.player} взял ${data.score} очков`);
-    } else if (data.type === 'win') {
-        addMessage('system', `🏆 ${data.player} побеждает с ${data.score} очками!`);
-    }
-});
+            <!-- Область наблюдателя -->
+            <div id="observerArea" style="display: none; text-align: center; padding: 40px; width: 100%;">
+                <div style="font-size: 1.5em; color: var(--text-secondary); margin-bottom: 20px;">
+                    👀 Вы наблюдаете за игрой
+                </div>
+                
+                <div class="score-board">
+                    <div class="score-item">
+                        <div class="score-label">Ход игрока</div>
+                        <div id="observerCurrentPlayer" class="score-value">-</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Очки раунда</div>
+                        <div id="observerRoundScore" class="score-value">0</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-label">Кости для броска</div>
+                        <div id="observerDiceToRoll" class="score-value">6</div>
+                    </div>
+                </div>
+                
+                <div id="observerDice" class="dice-container" style="margin: 30px 0;">
+                    <!-- Кости наблюдателя -->
+                </div>
+                
+                <button onclick="leaveGame()" class="btn btn-danger" style="margin-top: 20px;">
+                    🚪 Выйти из игры
+                </button>
+            </div>
+        </div>
 
-socket.on('error', (message) => {
-    console.error('Socket error:', message);
-    alert('Ошибка: ' + message);
-});
+        <!-- Правая панель - Комбинации и чат -->
+        <div class="combinations-panel">
+            <h2>🎯 Комбинации</h2>
+            
+            <div class="combo-grid">
+                <div class="combo-item">
+                    <div class="combo-value">100</div>
+                    <div class="combo-desc">За каждую 1</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">50</div>
+                    <div class="combo-desc">За каждую 5</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">1000</div>
+                    <div class="combo-desc">3 единицы</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">200</div>
+                    <div class="combo-desc">3 двойки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">300</div>
+                    <div class="combo-desc">3 тройки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">400</div>
+                    <div class="combo-desc">3 четверки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">500</div>
+                    <div class="combo-desc">3 пятерки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">600</div>
+                    <div class="combo-desc">3 шестерки</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">750</div>
+                    <div class="combo-desc">3 пары</div>
+                </div>
+                <div class="combo-item">
+                    <div class="combo-value">1500</div>
+                    <div class="combo-desc">Прямая (1-6)</div>
+                </div>
+            </div>
+
+            <!-- Чат -->
+            <div class="chat-container">
+                <h3>💬 Чат комнаты</h3>
+                <div id="chatMessages" class="chat-messages">
+                    <div class="chat-message system">Добро пожаловать в игру!</div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="chatInput" placeholder="Введите сообщение..." class="chat-input">
+                    <button onclick="sendMessage()" class="btn btn-primary">📤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Отладочная информация -->
+    <div class="debug-info">
+        <div class="debug-line">Room: <span id="debugRoom"><%= roomId %></span></div>
+        <div class="debug-line">Status: <span id="debugStatus">Connecting...</span></div>
+        <div class="debug-line">Socket: <span id="debugSocketId">-</span></div>
+        <div class="debug-line">My Turn: <span id="debugMyTurn">-</span></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const roomId = '<%= roomId %>';
+        let myPlayerId = null;
+        let isMyTurn = false;
+
+        console.log('🎮 Initializing game for room:', roomId);
+
+        // Подключение к серверу
+        socket.on('connect', () => {
+            console.log('✅ Connected to server with ID:', socket.id);
+            myPlayerId = socket.id;
+            
+            document.getElementById('debugStatus').textContent = 'Connected';
+            document.getElementById('debugSocketId').textContent = socket.id;
+            document.getElementById('debugRoom').textContent = roomId;
+
+            // Подключаемся к комнате
+            if (roomId && roomId !== '') {
+                console.log('🔗 Joining room:', roomId);
+                socket.emit('joinRoom', roomId);
+            } else {
+                console.error('❌ No room ID provided');
+                window.location.href = '/';
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log('❌ Disconnected from server');
+            document.getElementById('debugStatus').textContent = 'Disconnected';
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('❌ Connection error:', error);
+            document.getElementById('debugStatus').textContent = 'Error';
+        });
+
+        // Обработчики игровых событий
+        socket.on('gameState', (gameState) => {
+            console.log('🎮 Game state updated:', gameState);
+            updateGameState(gameState);
+        });
+
+        socket.on('playerJoined', (player) => {
+            console.log('👤 Player joined:', player);
+            addChatMessage('system', `Игрок ${player.username} присоединился к игре`);
+        });
+
+        socket.on('playerLeft', (player) => {
+            console.log('👤 Player left:', player);
+            addChatMessage('system', `Игрок ${player.username} вышел из игры`);
+        });
+
+        socket.on('gameMessage', (data) => {
+            console.log('📢 Game message:', data);
+            handleGameMessage(data);
+        });
+
+        socket.on('chatMessage', (data) => {
+            console.log('💬 Chat message:', data);
+            addChatMessage(data.player, data.message);
+        });
+
+        socket.on('error', (message) => {
+            console.error('🚨 Error:', message);
+            alert('Ошибка: ' + message);
+        });
+
+        // Функции обновления интерфейса
+        function updateGameState(gameState) {
+            updatePlayersList(gameState);
+            updateRoomInfo(gameState);
+            updateGameStatus(gameState);
+            updateGameControls(gameState);
+        }
+
+        function updatePlayersList(gameState) {
+            const playersList = document.getElementById('playersList');
+            const playerCount = document.getElementById('playerCount');
+            
+            playersList.innerHTML = '';
+            playerCount.textContent = `${gameState.players.length}/4`;
+            
+            gameState.players.forEach((player, index) => {
+                const playerElement = document.createElement('div');
+                playerElement.className = `player-item ${index === gameState.currentPlayerIndex ? 'current-player' : ''}`;
+                
+                const isMe = player.id === myPlayerId;
+                playerElement.innerHTML = `
+                    <span class="player-name">
+                        ${player.username} ${isMe ? ' (Вы)' : ''}
+                        ${index === gameState.currentPlayerIndex ? ' 🎯' : ''}
+                    </span>
+                    <span class="player-score">${player.score}</span>
+                `;
+                
+                playersList.appendChild(playerElement);
+            });
+        }
+
+        function updateRoomInfo(gameState) {
+            document.getElementById('roomCode').textContent = gameState.roomId;
+        }
+
+        function updateGameStatus(gameState) {
+            const gameStatus = document.getElementById('gameStatus');
+            const winnerMessage = document.getElementById('winnerMessage');
+            const waitingArea = document.getElementById('waitingArea');
+            const gameControls = document.getElementById('gameControls');
+            
+            if (gameState.status === 'waiting') {
+                gameStatus.textContent = `Ожидание игроков... (${gameState.players.length}/4)`;
+                waitingArea.style.display = 'block';
+                gameControls.style.display = 'none';
+                winnerMessage.style.display = 'none';
+                
+                // Показываем кнопку начала если есть минимум 2 игрока и я создатель
+                const canStart = gameState.players.length >= 2 && gameState.players[0].id === myPlayerId;
+                document.getElementById('startGameBtn').style.display = canStart ? 'block' : 'none';
+                
+            } else if (gameState.status === 'playing') {
+                gameStatus.textContent = 'Игра идет!';
+                waitingArea.style.display = 'none';
+                gameControls.style.display = 'block';
+                winnerMessage.style.display = 'none';
+                
+                const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+                document.getElementById('currentPlayer').textContent = currentPlayer.username;
+                
+            } else if (gameState.status === 'finished') {
+                gameStatus.textContent = 'Игра завершена!';
+                winnerMessage.style.display = 'block';
+                winnerMessage.innerHTML = `🏆 ПОБЕДА!<br>${gameState.winner} выигрывает!`;
+            }
+        }
+
+        function updateGameControls(gameState) {
+            const currentPlayerArea = document.getElementById('currentPlayerArea');
+            const observerArea = document.getElementById('observerArea');
+            
+            const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            isMyTurn = currentPlayer && currentPlayer.id === myPlayerId;
+            
+            document.getElementById('debugMyTurn').textContent = isMyTurn ? 'YES' : 'NO';
+            
+            if (myPlayer) {
+                // Я игрок
+                currentPlayerArea.style.display = 'block';
+                observerArea.style.display = 'none';
+                
+                document.getElementById('myScore').textContent = myPlayer.score;
+                document.getElementById('roundScore').textContent = myPlayer.roundScore;
+                document.getElementById('diceToRoll').textContent = myPlayer.diceToRoll;
+                
+                if (isMyTurn && gameState.status === 'playing') {
+                    document.getElementById('playerControls').style.display = 'grid';
+                    document.getElementById('diceContainer').style.display = 'grid';
+                    updateMyDice(myPlayer.dice, myPlayer.selected);
+                    
+                    // Обновляем состояние кнопок
+                    document.getElementById('rollBtn').disabled = myPlayer.diceToRoll === 0;
+                    const canTake = myPlayer.roundScore > 0 && (myPlayer.score > 0 || myPlayer.roundScore >= 300);
+                    document.getElementById('takeBtn').disabled = !canTake;
+                    
+                } else {
+                    document.getElementById('playerControls').style.display = 'none';
+                    document.getElementById('diceContainer').style.display = 'none';
+                }
+            } else {
+                // Я наблюдатель
+                currentPlayerArea.style.display = 'none';
+                observerArea.style.display = 'block';
+                
+                document.getElementById('observerCurrentPlayer').textContent = currentPlayer.username;
+                document.getElementById('observerRoundScore').textContent = currentPlayer.roundScore;
+                document.getElementById('observerDiceToRoll').textContent = currentPlayer.diceToRoll;
+                updateObserverDice(currentPlayer.dice, currentPlayer.selected);
+            }
+        }
+
+        function updateMyDice(dice, selected) {
+            const container = document.getElementById('diceContainer');
+            container.innerHTML = '';
+            
+            dice.forEach((value, index) => {
+                const diceElement = document.createElement('div');
+                diceElement.className = `dice ${selected[index] ? 'selected' : ''}`;
+                diceElement.innerHTML = `<span class="dice-value">${value}</span>`;
+                
+                if (isMyTurn && !selected[index]) {
+                    diceElement.style.cursor = 'pointer';
+                    diceElement.onclick = () => toggleDice(index);
+                } else {
+                    diceElement.style.cursor = 'default';
+                }
+                
+                container.appendChild(diceElement);
+            });
+        }
+
+        function updateObserverDice(dice, selected) {
+            const container = document.getElementById('observerDice');
+            container.innerHTML = '';
+            
+            dice.forEach((value, index) => {
+                const diceElement = document.createElement('div');
+                diceElement.className = `dice ${selected[index] ? 'selected' : ''}`;
+                diceElement.innerHTML = `<span class="dice-value">${value}</span>`;
+                diceElement.style.cursor = 'default';
+                container.appendChild(diceElement);
+            });
+        }
+
+        // Игровые действия
+        function startGame() {
+            console.log('🚀 Starting game in room:', roomId);
+            socket.emit('startGame', roomId);
+        }
+
+        function rollDice() {
+            console.log('🎲 Rolling dice in room:', roomId);
+            socket.emit('rollDice', roomId);
+        }
+
+        function toggleDice(index) {
+            console.log('🎯 Toggling dice:', index);
+            socket.emit('toggleDice', { roomId, index });
+        }
+
+        function takePoints() {
+            console.log('💰 Taking points in room:', roomId);
+            socket.emit('takePoints', roomId);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                console.log('💬 Sending message:', message);
+                socket.emit('chatMessage', { roomId, message });
+                input.value = '';
+            }
+        }
+
+        function copyRoomCode() {
+            const roomCode = document.getElementById('roomCode').textContent;
+            const inviteText = `Присоединяйся к моей игре в ZONK! Код комнаты: ${roomCode}\n${window.location.origin}/game/${roomId}`;
+            
+            navigator.clipboard.writeText(inviteText).then(() => {
+                addChatMessage('system', 'Приглашение скопировано! Отправь друзьям.');
+            }).catch(() => {
+                alert('Скопируйте вручную: ' + inviteText);
+            });
+        }
+
+        function leaveGame() {
+            if (confirm('Вы уверены, что хотите выйти из игры?')) {
+                window.location.href = '/';
+            }
+        }
+
+        // Вспомогательные функции
+        function addChatMessage(sender, message) {
+            const chat = document.getElementById('chatMessages');
+            const messageElement = document.createElement('div');
+            
+            if (sender === 'system') {
+                messageElement.className = 'chat-message system';
+                messageElement.textContent = message;
+            } else {
+                messageElement.className = 'chat-message';
+                messageElement.innerHTML = `<strong>${sender}:</strong> ${message}`;
+            }
+            
+            chat.appendChild(messageElement);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function handleGameMessage(data) {
+            let message = '';
+            
+            switch(data.type) {
+                case 'zonk':
+                    message = `💥 ${data.player} получил ZONK! Очки раунда потеряны.`;
+                    break;
+                case 'hotDice':
+                    message = `🎉 ${data.player} получил Hot Dice! Бросает снова все 6 костей.`;
+                    break;
+                case 'takePoints':
+                    message = `💰 ${data.player} взял ${data.score} очков.`;
+                    break;
+                case 'win':
+                    message = `🏆 ${data.player} побеждает с ${data.score} очками!`;
+                    break;
+            }
+            
+            if (message) {
+                addChatMessage('system', message);
+            }
+        }
+
+        // Обработчики клавиш
+        document.getElementById('chatInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Периодическая проверка подключения
+        setInterval(() => {
+            if (!socket.connected) {
+                document.getElementById('debugStatus').textContent = 'Reconnecting...';
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
